@@ -34,14 +34,22 @@ public class Movie {
 
   @Column(nullable = false)
   private double avgRating = 0.0;
+  
+  @Column
+  private String director;
+
+  @Column
+  private String actors;
 
   protected Movie() {}
 
-  public Movie(String title, int releaseYear, Set<MovieGenre> genres, String synopsis) {
+  public Movie(String title, int releaseYear, Set<MovieGenre> genres, String synopsis, String director, String actors) {
     this.title = title;
     this.releaseYear = releaseYear;
     this.genres = genres;
     this.synopsis = synopsis;
+    this.director = director;
+    this.actors = actors;
   }
 
   public Long getId() {
@@ -71,4 +79,13 @@ public class Movie {
   public void setAvgRating(double avgRating) {
     this.avgRating = avgRating;
   }
+  
+  public String getDirector() {
+	return director;
+  }
+
+  public String getActors() {
+	return actors;
+  }
+
 }
