@@ -1,20 +1,21 @@
 package psia.movieRecHub.dto.request;
 
-import psia.movieRecHub.entities.MovieGenre;
-import psia.movieRecHub.entities.Movie;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.util.Set;
+import psia.movieRecHub.entities.MovieGenre;
 
 public class MovieRequestDto {
 
-    @NotBlank private Long id;
-    @NotBlank private String title;
-    @NotNull private int releaseYear;
-    @NotEmpty private Set<MovieGenre> genres;
-    @NotBlank private String synopsis;
-    @NotNull private double avgRating;
+  @NotBlank private Long id;
+  @NotBlank private String title;
+  @NotNull private int releaseYear;
+  @NotEmpty private Set<MovieGenre> genres;
+  @NotBlank private String synopsis;
+  @NotNull private double avgRating;
+  private String director;
+  private String actors;
 
   public MovieRequestDto() {}
 
@@ -64,5 +65,21 @@ public class MovieRequestDto {
 
   public void setAvgRating(double avgRating) {
     this.avgRating = avgRating;
+  }
+
+  public String getDirector() {
+    return director;
+  }
+
+  public void setDirector(String director) {
+    this.director = director;
+  }
+
+  public String getActors() {
+    return actors;
+  }
+
+  public void setActors(String actors) {
+    this.actors = actors;
   }
 }
