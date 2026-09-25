@@ -34,16 +34,20 @@ public class Movie {
 
   @Column(nullable = false)
   private double avgRating = 0.0;
-  
-  @Column
-  private String director;
 
-  @Column
-  private String actors;
+  @Column private String director;
+
+  @Column private String actors;
 
   protected Movie() {}
 
-  public Movie(String title, int releaseYear, Set<MovieGenre> genres, String synopsis, String director, String actors) {
+  public Movie(
+      String title,
+      int releaseYear,
+      Set<MovieGenre> genres,
+      String synopsis,
+      String director,
+      String actors) {
     this.title = title;
     this.releaseYear = releaseYear;
     this.genres = genres;
@@ -79,13 +83,12 @@ public class Movie {
   public void setAvgRating(double avgRating) {
     this.avgRating = avgRating;
   }
-  
+
   public String getDirector() {
-	return director;
+    return director;
   }
 
   public String getActors() {
-	return actors;
+    return actors;
   }
-
 }

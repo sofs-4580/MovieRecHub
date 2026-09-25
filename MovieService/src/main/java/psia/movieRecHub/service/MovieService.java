@@ -2,6 +2,7 @@ package psia.movieRecHub.service;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import psia.movieRecHub.dto.response.MovieResponseDto;
 import psia.movieRecHub.entities.Movie;
@@ -12,7 +13,7 @@ import psia.movieRecHub.repositories.MovieRepository;
 @Service
 public class MovieService {
 
-  private MovieRepository movieRepository;
+  @Autowired private MovieRepository movieRepository;
 
   public List<MovieResponseDto> getAllMovies(MovieGenre genre) {
     List<Movie> movies =
@@ -62,7 +63,7 @@ public class MovieService {
     movieRepository.save(movie);
   }
 
-  public private MovieResponseDto mapMovieToMovieResponse(Movie movie) {
+  private MovieResponseDto mapMovieToMovieResponse(Movie movie) {
     return new MovieResponseDto(
         movie.getId(),
         movie.getTitle(),
