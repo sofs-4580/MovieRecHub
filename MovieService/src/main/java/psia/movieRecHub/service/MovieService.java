@@ -35,6 +35,12 @@ public class MovieService {
         .toList();
   }
 
+  public List<MovieResponseDto> search(String query) {
+    return movieRepository.searchByQuery(query).stream()
+        .map(this::mapMovieToMovieResponse)
+        .toList();
+  }
+
   public List<MovieResponseDto> searchByDirector(String director) {
     return movieRepository.findByDirectorContainingIgnoreCase(director).stream()
         .map(this::mapMovieToMovieResponse)
