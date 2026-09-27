@@ -1,0 +1,53 @@
+version: "3.8"
+
+services:
+
+  # ---- movie-service --------------------------------------------------------------
+  movie-service:
+    build:
+      context: .
+      dockerfile: MovieService/Dockerfile
+    container_name: movie-service
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    depends_on:
+      - pgserver-movie
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://pgserver-movie:5432/moviedb
+      - SPRING_DATASOURCE_USERNAME=user
+      - SPRING_DATASOURCE_PASSWORD=password
+      - SERVER_PORT=8082
+    networks:
+      - psianet
+
+  pgserver-movie:
+    image: postgres:15.1-alpine
+    container_name: pgserver-movie
+    volumes:
+      - postgres-movie-data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=moviedb
+    restart: unless-stopped
+    networks:
+      - psianet
+
+  # ---- user-service ----------------------------------------------------------------
+  # Descomentar quando o UserService/Dockerfile existir e o serviço buildar.
+
+
+  # ---- profile-service -------------------------------------------------------
+
+
+volumes:
+  postgres-movie-data:
+  # postgres-user-data:
+  # postgres-recommendation-data:
+
+networks:
+  psianet:
+    driver: bridge
