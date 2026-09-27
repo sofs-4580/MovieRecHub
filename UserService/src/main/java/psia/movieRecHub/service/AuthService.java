@@ -16,13 +16,11 @@ public class AuthService {
 
   private final UserRepository users;
   private final PasswordEncoder passwordEncoder;
-  private final JwtTokenService tokenService;
 
   public AuthService(
-      UserRepository users, PasswordEncoder passwordEncoder, JwtTokenService tokenService) {
+      UserRepository users, PasswordEncoder passwordEncoder) {
     this.users = users;
     this.passwordEncoder = passwordEncoder;
-    this.tokenService = tokenService;
   }
 
   @Transactional
@@ -46,6 +44,6 @@ public class AuthService {
     if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
       throw new InvalidCredentialsException();
     }
-    return tokenService.issueFor(user);
+    return new LoginResponse(user.getId(), user.getUsername());
   }
 }

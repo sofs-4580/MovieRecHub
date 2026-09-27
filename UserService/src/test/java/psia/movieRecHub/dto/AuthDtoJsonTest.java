@@ -53,24 +53,9 @@ class AuthDtoJsonTest {
   }
 
   @Test
-  void loginResponseContainsTokenMetadataWithoutPasswordOrHash() throws Exception {
-    JsonNode actual =
-        mapper.readTree(
-            mapper.writeValueAsString(
-                new LoginResponse("example-token", "Bearer", 900, 1L, "ana_34")));
-
-    assertThat(actual)
-        .isEqualTo(
-            mapper.readTree(
-                """
-                {
-                  "accessToken":"example-token",
-                  "tokenType":"Bearer",
-                  "expiresIn":900,
-                  "userId":1,
-                  "username":"ana_34"
-                }
-                """));
+  void loginResponseContainsOnlyPublicAccountIdentifiers() throws Exception {
+    JsonNode actual = mapper.readTree(mapper.writeValueAsString(new LoginResponse(1L, "ana_34")));
+    assertThat(actual).isEqualTo(mapper.readTree("{\"userId\":1,\"username\":\"ana_34\"}"));
   }
 
   @Test
@@ -79,7 +64,5 @@ class AuthDtoJsonTest {
         .doesNotContain("private-password");
     assertThat(new LoginRequest("ana_34", "private-password").toString())
         .doesNotContain("private-password");
-    assertThat(new LoginResponse("private-token", "Bearer", 900, 1L, "ana_34").toString())
-        .doesNotContain("private-token");
   }
 }

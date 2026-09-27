@@ -42,10 +42,15 @@ public class User {
       throw new IllegalArgumentException(
           "Username must contain 3 to 30 lowercase letters, digits or underscores");
     }
+    this.username = normalizedUsername;
+    changePasswordHash(passwordHash);
+  }
+
+  /** Replaces the encoded password; the caller must authenticate the account first. */
+  public void changePasswordHash(String passwordHash) {
     if (passwordHash == null || passwordHash.isBlank() || passwordHash.length() > 255) {
       throw new IllegalArgumentException("Password hash must contain 1 to 255 characters");
     }
-    this.username = normalizedUsername;
     this.passwordHash = passwordHash;
   }
 
