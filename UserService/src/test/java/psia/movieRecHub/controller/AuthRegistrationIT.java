@@ -29,6 +29,8 @@ class AuthRegistrationIT {
 
   @Autowired private UserRepository users;
 
+  @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
   @Autowired private PasswordEncoder passwordEncoder;
 
   @Test
@@ -50,6 +52,9 @@ class AuthRegistrationIT {
     User saved = users.findByUsername(expectedUsername).orElseThrow();
     assertThat(saved.getId()).isEqualTo(response.getBody().userId());
     assertThat(saved.getCreatedAt()).isNotNull();
+    assertThat(jdbc.queryForObject(
+        "SELECT count(*) FROM pending_profiles WHERE user_id = ?", Long.class, saved.getId()))
+        .isEqualTo(1);
     assertThat(saved.getPasswordHash()).isNotEqualTo(password);
     assertThat(saved.getPasswordHash()).startsWith("{pbkdf2@SpringSecurity_v5_8}");
     assertThat(passwordEncoder.matches(password, saved.getPasswordHash())).isTrue();
@@ -85,6 +90,9 @@ class AuthRegistrationIT {
     assertThat(second.getBody()).isNotNull();
     assertThat(second.getBody().code()).isEqualTo("USERNAME_TAKEN");
     assertThat(users.count()).isEqualTo(before + 1);
+    assertThat(jdbc.queryForObject(
+        "SELECT count(*) FROM pending_profiles WHERE user_id = ?", Long.class, first.getBody().userId()))
+        .isEqualTo(1);
   }
 
   @Test
