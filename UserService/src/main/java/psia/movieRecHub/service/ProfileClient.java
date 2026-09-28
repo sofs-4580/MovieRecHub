@@ -1,6 +1,8 @@
 package psia.movieRecHub.service;
 
 import java.time.Duration;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -27,9 +29,12 @@ public class ProfileClient {
     client = builder.baseUrl(baseUrl).requestFactory(factory).build();
   }
 
-  public void createInitialProfile(long userId) {
-    int status = client.put().uri("/internal/profiles/{userId}", userId)
-        .retrieve().toBodilessEntity().getStatusCode().value();
+  public void createInitialProfile(long userId, Set<String> favoriteGenres) {
+    var request = client.put().uri("/internal/profiles/{userId}", userId);
+    int status = favoriteGenres.isEmpty()
+        ? request.retrieve().toBodilessEntity().getStatusCode().value()
+        : request.body(Map.of("favoriteGenres", favoriteGenres))
+            .retrieve().toBodilessEntity().getStatusCode().value();
     if (status != 201 && status != 204) {
       throw new RestClientException("Unexpected profile creation status: " + status);
     }

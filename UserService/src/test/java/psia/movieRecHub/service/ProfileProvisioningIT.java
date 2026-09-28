@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,8 @@ class ProfileProvisioningIT {
     RegisterResponse account = register();
     assertThat(users.existsById(account.userId())).isTrue();
     assertThat(pending(account.userId())).isEqualTo(1);
+    assertThat(jdbc.queryForObject("SELECT favorite_genres::text FROM pending_profiles WHERE user_id = ?",
+        String.class, account.userId())).contains("DRAMA", "SCI_FI");
     assertThat(jdbc.queryForObject(
         "SELECT attempts FROM pending_profiles WHERE user_id = ?", Long.class, account.userId()))
         .isZero();
@@ -54,7 +57,7 @@ class ProfileProvisioningIT {
   @Test
   void failedDeliveryRemainsPendingAndIsNotRetriedBeforeDueTime() {
     RegisterResponse account = register();
-    doThrow(new ResourceAccessException("unavailable")).when(client).createInitialProfile(anyLong());
+    doThrow(new ResourceAccessException("unavailable")).when(client).createInitialProfile(anyLong(), org.mockito.ArgumentMatchers.anySet());
 
     assertThat(provisioning.processNext()).isTrue();
     assertThat(pending(account.userId())).isEqualTo(1);
@@ -66,14 +69,14 @@ class ProfileProvisioningIT {
         "SELECT last_error FROM pending_profiles WHERE user_id = ?", String.class, account.userId()))
         .isEqualTo("DELIVERY_FAILED");
     assertThat(provisioning.processNext()).isFalse();
-    verify(client, times(1)).createInitialProfile(account.userId());
+    verify(client, times(1)).createInitialProfile(account.userId(), Set.of("DRAMA", "SCI_FI"));
   }
 
   @Test
   void retryAfterRecoveryRemovesPendingDelivery() {
     RegisterResponse account = register();
     doThrow(new ResourceAccessException("unavailable")).doNothing()
-        .when(client).createInitialProfile(account.userId());
+        .when(client).createInitialProfile(account.userId(), Set.of("DRAMA", "SCI_FI"));
     assertThat(provisioning.processNext()).isTrue();
     jdbc.update("UPDATE pending_profiles SET next_attempt_at = CURRENT_TIMESTAMP WHERE user_id = ?",
         account.userId());
@@ -81,7 +84,7 @@ class ProfileProvisioningIT {
     assertThat(provisioning.processNext()).isTrue();
     assertThat(pending(account.userId())).isZero();
     assertThat(provisioning.processNext()).isFalse();
-    verify(client, times(2)).createInitialProfile(account.userId());
+    verify(client, times(2)).createInitialProfile(account.userId(), Set.of("DRAMA", "SCI_FI"));
   }
 
   @Test
@@ -91,7 +94,7 @@ class ProfileProvisioningIT {
     transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     long[] userId = new long[1];
     assertThatThrownBy(() -> transaction.executeWithoutResult(status -> {
-      userId[0] = auth.register(new RegisterRequest(username, "password-testing-123")).userId();
+      userId[0] = auth.register(new RegisterRequest(username, "password-testing-123", Set.of("DRAMA", "SCI_FI"))).userId();
       throw new IllegalStateException("simulate failure before commit");
     })).isInstanceOf(IllegalStateException.class);
 
@@ -100,7 +103,7 @@ class ProfileProvisioningIT {
   }
 
   private RegisterResponse register() {
-    return auth.register(new RegisterRequest(username(), "password-testing-123"));
+    return auth.register(new RegisterRequest(username(), "password-testing-123", Set.of("DRAMA", "SCI_FI")));
   }
 
   private String username() {

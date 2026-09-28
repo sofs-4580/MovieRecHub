@@ -40,7 +40,7 @@ public class AuthService {
       // The unique constraint closes the race between the existence check and the insert.
       throw new UsernameTakenException();
     }
-    pendingProfiles.enqueue(saved.getId());
+    pendingProfiles.enqueue(saved.getId(), request.favoriteGenres());
     return new RegisterResponse(saved.getId(), saved.getUsername());
   }
   @Transactional(readOnly = true)

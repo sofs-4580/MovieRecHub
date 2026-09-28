@@ -15,6 +15,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 REPO = Path(__file__).resolve().parents[4]
@@ -122,6 +123,29 @@ def post(port, path, payload):
         return response.status, json.load(response)
 
 
+def login_cookie(port, credentials):
+    request = urllib.request.Request(f"http://127.0.0.1:{port}/api/auth/login",
+                                     data=json.dumps({"username": credentials["username"],
+                                                      "password": credentials["password"]}).encode(),
+                                     headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.status == 200
+        return response.headers["Set-Cookie"].split(";", 1)[0]
+
+
+def own_profile(port, cookie, update=None):
+    method = "GET" if update is None else "PATCH"
+    headers = {"Cookie": cookie}
+    data = None
+    if update is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(update).encode()
+    request = urllib.request.Request(f"http://127.0.0.1:{port}/api/profiles/me",
+                                     data=data, headers=headers, method=method)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.load(response)
+
+
 def main():
     with ExitStack() as stack:
         users = stack.enter_context(database("user_service", "users_test"))
@@ -135,45 +159,79 @@ def main():
                         PROFILE_RETRY_DELAY="500ms", PROFILE_CONNECT_TIMEOUT="300ms", PROFILE_READ_TIMEOUT="500ms",
                         PROFILE_PROVISIONING_ENABLED="true")
         profile_env = dict(os.environ, PROFILE_DB_URL=profiles["url"], PROFILE_DB_USERNAME=profiles["role"],
-                           PROFILE_DB_PASSWORD=profiles["password"])
-        credentials = dict(username="recovery_" + secrets.token_hex(4), password="password-testing-123")
+                           PROFILE_DB_PASSWORD=profiles["password"],
+                           USER_SERVICE_URL=f"http://127.0.0.1:{user_port}")
+        credentials = dict(username="recovery_" + secrets.token_hex(4), password="password-testing-123",
+                           favoriteGenres=["DRAMA", "SCI_FI"])
         with application("UserService", "user-service-1.0.jar", user_env, user_port):
             status, account = post(user_port, "/api/auth/register", credentials)
             assert status == 201
             user_id = int(account["userId"])
             eventually(lambda: int(users["sql"](f"SELECT attempts FROM pending_profiles WHERE user_id={user_id}")) > 0,
                        "persist failed delivery")
-            assert post(user_port, "/api/auth/login", credentials)[0] == 200
-            print("PASS: registration and login while ProfileService is unavailable; delivery persisted.", flush=True)
+            assert post(user_port, "/api/auth/login", {"username": credentials["username"],
+                                                          "password": credentials["password"]})[0] == 200
+            assert 'DRAMA' in users["sql"](f"SELECT favorite_genres::text FROM pending_profiles WHERE user_id={user_id}")
+            assert 'SCI_FI' in users["sql"](f"SELECT favorite_genres::text FROM pending_profiles WHERE user_id={user_id}")
+            print("PASS: registration and login while ProfileService is unavailable; initial genres persisted.", flush=True)
         assert users["sql"](f"SELECT count(*) FROM pending_profiles WHERE user_id={user_id}") == "1"
         with application("UserService", "user-service-1.0.jar", user_env, user_port):
             stack.enter_context(application("ProfileService", "profile-service-1.0.jar", profile_env, profile_port))
             eventually(lambda: users["sql"](f"SELECT count(*) FROM pending_profiles WHERE user_id={user_id}") == "0",
                        "recovery after restart")
             assert profiles["sql"](f"SELECT count(*) FROM profiles WHERE user_id={user_id}") == "1"
-            print("PASS: UserService restart retains the job; ProfileService recovery creates the profile.", flush=True)
+            assert set(profiles["sql"](f"SELECT genre FROM profile_favorite_genres WHERE user_id={user_id} ORDER BY genre").splitlines()) == {"DRAMA", "SCI_FI"}
+            print("PASS: UserService restart retains the job and preferences; recovery creates the initialized profile.", flush=True)
 
-            profiles["sql"](f"UPDATE profiles SET display_name='Edited', bio='Keep me', updated_at=clock_timestamp() WHERE user_id={user_id}")
-            profiles["sql"](f"INSERT INTO profile_favorite_genres (user_id,genre) VALUES ({user_id},'DRAMA')")
+            cookie = login_cookie(user_port, credentials)
+            try:
+                own_profile(profile_port, "JSESSIONID=invalid")
+                raise AssertionError("ProfileService accepted an invalid session")
+            except urllib.error.HTTPError as error:
+                assert error.code == 401
+            own = own_profile(profile_port, cookie)
+            assert own["userId"] == user_id
+            assert set(own["favoriteGenres"]) == {"DRAMA", "SCI_FI"}
+            assert own["favoriteDecades"] == []
+            updated = own_profile(profile_port, cookie,
+                                  {"displayName": "Edited", "bio": "Keep me",
+                                   "favoriteGenres": ["DRAMA"], "favoriteDecades": [1980, 2000]})
+            assert updated["displayName"] == "Edited"
+            assert updated["bio"] == "Keep me"
+            assert updated["favoriteGenres"] == ["DRAMA"]
+            assert set(updated["favoriteDecades"]) == {1980, 2000}
+            print("PASS: real UserService session authorizes GET/PATCH of own profile and decades.", flush=True)
+            assert profiles["sql"](f"SELECT decade FROM profile_favorite_decades WHERE user_id={user_id} ORDER BY decade").splitlines() == ["1980", "2000"]
             snapshot = profiles["sql"](f"SELECT row_to_json(p) FROM profiles p WHERE user_id={user_id}")
             # Simulate delivery succeeded but its acknowledgement was lost before commit.
-            users["sql"](f"INSERT INTO pending_profiles (user_id) VALUES ({user_id})")
+            users["sql"](f"INSERT INTO pending_profiles (user_id, favorite_genres) VALUES ({user_id}, '[\"DRAMA\",\"SCI_FI\"]'::jsonb)")
             eventually(lambda: users["sql"](f"SELECT count(*) FROM pending_profiles WHERE user_id={user_id}") == "0",
                        "duplicate delivery acknowledgement")
             assert profiles["sql"](f"SELECT row_to_json(p) FROM profiles p WHERE user_id={user_id}") == snapshot
             assert profiles["sql"](f"SELECT genre FROM profile_favorite_genres WHERE user_id={user_id}") == "DRAMA"
+            assert set(profiles["sql"](f"SELECT decade FROM profile_favorite_decades WHERE user_id={user_id}").splitlines()) == {"1980", "2000"}
             print("PASS: repeated delivery receives success and preserves all edited profile data.", flush=True)
 
             second_port = free_port()
             with application("UserService", "user-service-1.0.jar", user_env, second_port):
                 credentials["username"] = "normal_" + secrets.token_hex(4)
+                credentials["favoriteGenres"] = ["COMEDY"]
                 status, second = post(second_port, "/api/auth/register", credentials)
                 assert status == 201
                 second_id = int(second["userId"])
                 eventually(lambda: users["sql"](f"SELECT count(*) FROM pending_profiles WHERE user_id={second_id}") == "0",
                            "delivery with two workers")
                 assert profiles["sql"](f"SELECT count(*) FROM profiles WHERE user_id={second_id}") == "1"
-                print("PASS: normal registration creates one profile with two UserService workers running.", flush=True)
+                assert profiles["sql"](f"SELECT genre FROM profile_favorite_genres WHERE user_id={second_id}") == "COMEDY"
+                print("PASS: normal registration creates one initialized profile with two UserService workers running.", flush=True)
+        # The ProfileService remains up while UserService is stopped: authentication must fail as unavailable.
+        try:
+            own_profile(profile_port, cookie)
+            raise AssertionError("ProfileService accepted a request while UserService was down")
+        except urllib.error.HTTPError as error:
+            assert error.code == 503
+            assert json.load(error)["code"] == "AUTH_SERVICE_UNAVAILABLE"
+        print("PASS: UserService outage is reported as 503 rather than an invalid session.", flush=True)
     print("PASS: all processes stopped and both disposable PostgreSQL instances removed.", flush=True)
 
 

@@ -2,6 +2,7 @@ package psia.movieRecHub.service;
 
 import java.time.Duration;
 import java.util.Optional;
+import psia.movieRecHub.repository.PendingProfileCreation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,13 +35,14 @@ public class ProfileProvisioningService {
   /** Processes at most one job, with a row lock held until the result is persisted. */
   @Transactional
   public boolean processNext() {
-    Optional<Long> next = pending.lockNextDue();
+    Optional<PendingProfileCreation> next = pending.lockNextDue();
     if (next.isEmpty()) {
       return false;
     }
-    long userId = next.get();
+    PendingProfileCreation creation = next.get();
+    long userId = creation.userId();
     try {
-      client.createInitialProfile(userId);
+      client.createInitialProfile(userId, creation.favoriteGenres());
     } catch (RestClientException exception) {
       String error = exception instanceof RestClientResponseException response
           ? "HTTP_" + response.getStatusCode().value() : "DELIVERY_FAILED";

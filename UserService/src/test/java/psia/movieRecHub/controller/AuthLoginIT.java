@@ -3,6 +3,7 @@ package psia.movieRecHub.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,13 @@ class AuthLoginIT {
     assertThat(body.path("username").asText()).isEqualTo(username);
     assertThat(response.getHeaders().getFirst("Set-Cookie"))
         .contains("JSESSIONID=", "HttpOnly", "SameSite=Strict");
+    HttpHeaders headers = new HttpHeaders();
+    headers.set(HttpHeaders.COOKIE, response.getHeaders().getFirst("Set-Cookie").split(";", 2)[0]);
+    ResponseEntity<JsonNode> session = client.exchange("/internal/auth/session", HttpMethod.GET,
+        new HttpEntity<>(headers), JsonNode.class);
+    assertThat(session.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(session.getBody().size()).isEqualTo(1);
+    assertThat(session.getBody().path("userId").asLong()).isEqualTo(account.userId());
   }
 
   @Test
@@ -64,6 +72,15 @@ class AuthLoginIT {
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(response.getBody().code()).isEqualTo("VALIDATION_ERROR");
     assertThat(response.getBody().message()).doesNotContain("sensitive-password");
+  }
+
+  @Test
+  void internalSessionEndpointRequiresLoginWithoutCreatingSession() {
+    ResponseEntity<ApiErrorResponse> response =
+        client.getForEntity("/internal/auth/session", ApiErrorResponse.class);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(response.getBody().code()).isEqualTo("UNAUTHORIZED");
+    assertThat(response.getHeaders().getFirst("Set-Cookie")).isNull();
   }
 
   @Test
@@ -95,7 +112,7 @@ class AuthLoginIT {
 
   private RegisterResponse register(String username, String password) {
     var response = client.postForEntity("/api/auth/register",
-        Map.of("username", username, "password", password), RegisterResponse.class);
+        Map.of("username", username, "password", password, "favoriteGenres", List.of("DRAMA")), RegisterResponse.class);
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     return response.getBody();
   }

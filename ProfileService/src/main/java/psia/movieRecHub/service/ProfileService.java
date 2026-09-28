@@ -1,7 +1,9 @@
 package psia.movieRecHub.service;
 
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import psia.movieRecHub.model.MovieGenre;
 import psia.movieRecHub.repository.ProfileRepository;
 
 @Service
@@ -13,12 +15,21 @@ public class ProfileService {
     this.profiles = profiles;
   }
 
-  /** Ensures a default profile exists without modifying an existing profile. */
+  /** Ensures a profile exists without modifying one that was previously created or edited. */
   @Transactional
-  public boolean createInitialProfile(Long userId) {
+  public boolean createInitialProfile(Long userId, Set<MovieGenre> favoriteGenres) {
     if (userId == null || userId <= 0) {
       throw new IllegalArgumentException("User ID must be positive");
     }
-    return profiles.insertInitialProfileIfAbsent(userId) == 1;
+    if (favoriteGenres == null || favoriteGenres.stream().anyMatch(genre -> genre == null)) {
+      throw new IllegalArgumentException("Favorite genres must not be null or contain null");
+    }
+    if (profiles.insertInitialProfileIfAbsent(userId) == 0) {
+      return false;
+    }
+    for (MovieGenre genre : favoriteGenres) {
+      profiles.insertInitialFavoriteGenre(userId, genre.name());
+    }
+    return true;
   }
 }

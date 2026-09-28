@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import java.util.Set;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,7 @@ class AuthRequestValidationTest {
   @ParameterizedTest
   @ValueSource(strings = {"ana_34", "ANA_34", "  Ana_34  "})
   void acceptsAndNormalizesUsernameForBothRequests(String username) {
-    RegisterRequest register = new RegisterRequest(username, "valid-password");
+    RegisterRequest register = registration(username, "valid-password");
     LoginRequest login = new LoginRequest(username, "valid-password");
 
     assertThat(validator.validate(register)).isEmpty();
@@ -44,7 +45,7 @@ class AuthRequestValidationTest {
   @NullAndEmptySource
   @ValueSource(strings = {" ", "ab", "ana maria", "ana@34", "ana-34", "aná_34"})
   void rejectsInvalidUsernameForBothRequests(String username) {
-    assertInvalidField(new RegisterRequest(username, "valid-password"), "username");
+    assertInvalidField(registration(username, "valid-password"), "username");
     assertInvalidField(new LoginRequest(username, "valid-password"), "username");
   }
 
@@ -53,7 +54,7 @@ class AuthRequestValidationTest {
   void acceptsUsernameLengthBoundaries(int length) {
     String username = "a".repeat(length);
 
-    assertThat(validator.validate(new RegisterRequest(username, "valid-password"))).isEmpty();
+    assertThat(validator.validate(registration(username, "valid-password"))).isEmpty();
     assertThat(validator.validate(new LoginRequest(username, "valid-password"))).isEmpty();
   }
 
@@ -61,7 +62,7 @@ class AuthRequestValidationTest {
   void rejectsUsernameLongerThanDatabaseColumn() {
     String username = "a".repeat(31);
 
-    assertInvalidField(new RegisterRequest(username, "valid-password"), "username");
+    assertInvalidField(registration(username, "valid-password"), "username");
     assertInvalidField(new LoginRequest(username, "valid-password"), "username");
   }
 
@@ -69,20 +70,20 @@ class AuthRequestValidationTest {
   @NullAndEmptySource
   @ValueSource(strings = {" ", "            ", "\t\n"})
   void rejectsMissingOrBlankPasswordsForBothRequests(String password) {
-    assertInvalidField(new RegisterRequest("ana_34", password), "password");
+    assertInvalidField(registration("ana_34", password), "password");
     assertInvalidField(new LoginRequest("ana_34", password), "password");
   }
 
   @ParameterizedTest
   @ValueSource(ints = {12, 128})
   void acceptsRegistrationPasswordLengthBoundaries(int length) {
-    assertThat(validator.validate(new RegisterRequest("ana_34", "x".repeat(length)))).isEmpty();
+    assertThat(validator.validate(registration("ana_34", "x".repeat(length)))).isEmpty();
   }
 
   @ParameterizedTest
   @ValueSource(ints = {1, 11, 129})
   void rejectsRegistrationPasswordOutsideAllowedLength(int length) {
-    assertInvalidField(new RegisterRequest("ana_34", "x".repeat(length)), "password");
+    assertInvalidField(registration("ana_34", "x".repeat(length)), "password");
   }
 
   @ParameterizedTest
@@ -99,13 +100,28 @@ class AuthRequestValidationTest {
   @Test
   void preservesPasswordCaseWhitespaceAndUnicode() {
     String password = "  SeGrEdO-ç-123  ";
-    RegisterRequest register = new RegisterRequest("ana_34", password);
+    RegisterRequest register = registration("ana_34", password);
     LoginRequest login = new LoginRequest("ana_34", password);
 
     assertThat(register.password()).isEqualTo(password);
     assertThat(login.password()).isEqualTo(password);
     assertThat(validator.validate(register)).isEmpty();
     assertThat(validator.validate(login)).isEmpty();
+  }
+
+  @Test
+  void rejectsMissingEmptyAndInvalidFavoriteGenres() {
+    assertInvalidField(new RegisterRequest("ana_34", "valid-password", null), "favoriteGenres");
+    assertInvalidField(new RegisterRequest("ana_34", "valid-password", Set.of()), "favoriteGenres");
+    for (String invalid : new String[] {"WESTERN", "drama", " "}) {
+      assertThat(validator.validate(new RegisterRequest("ana_34", "valid-password", Set.of(invalid))))
+          .isNotEmpty();
+    }
+    assertThat(validator.validate(registration("ana_34", "valid-password"))).isEmpty();
+  }
+
+  private static RegisterRequest registration(String username, String password) {
+    return new RegisterRequest(username, password, Set.of("DRAMA"));
   }
 
   private static void assertInvalidField(Object request, String field) {

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class AuthDtoJsonTest {
@@ -17,12 +18,16 @@ class AuthDtoJsonTest {
         {"username":"  Ana_34  ","password":"  SeGrEdO-ç-123  "}
         """;
 
-    RegisterRequest register = mapper.readValue(json, RegisterRequest.class);
+    RegisterRequest register = mapper.readValue(
+        """
+        {"username":"  Ana_34  ","password":"  SeGrEdO-ç-123  ","favoriteGenres":["DRAMA"]}
+        """, RegisterRequest.class);
     LoginRequest login = mapper.readValue(json, LoginRequest.class);
 
     assertThat(register.username()).isEqualTo("ana_34");
     assertThat(login.username()).isEqualTo("ana_34");
     assertThat(register.password()).isEqualTo("  SeGrEdO-ç-123  ");
+    assertThat(register.favoriteGenres()).containsExactly("DRAMA");
     assertThat(login.password()).isEqualTo("  SeGrEdO-ç-123  ");
   }
 
@@ -38,10 +43,11 @@ class AuthDtoJsonTest {
   @Test
   void passwordsAreNotSerializedBackToJson() throws Exception {
     JsonNode expected = mapper.readTree("{\"username\":\"ana_34\"}");
-    JsonNode register = mapper.valueToTree(new RegisterRequest("ana_34", "private-password"));
+    JsonNode register = mapper.valueToTree(new RegisterRequest("ana_34", "private-password", Set.of("DRAMA")));
     JsonNode login = mapper.valueToTree(new LoginRequest("ana_34", "private-password"));
 
-    assertThat(register).isEqualTo(expected);
+    assertThat(register).isEqualTo(mapper.readTree(
+        "{\"username\":\"ana_34\",\"favoriteGenres\":[\"DRAMA\"]}"));
     assertThat(login).isEqualTo(expected);
   }
 
@@ -60,7 +66,7 @@ class AuthDtoJsonTest {
 
   @Test
   void stringRepresentationsDoNotExposeCredentials() {
-    assertThat(new RegisterRequest("ana_34", "private-password").toString())
+    assertThat(new RegisterRequest("ana_34", "private-password", Set.of("DRAMA")).toString())
         .doesNotContain("private-password");
     assertThat(new LoginRequest("ana_34", "private-password").toString())
         .doesNotContain("private-password");

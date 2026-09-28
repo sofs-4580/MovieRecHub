@@ -117,6 +117,14 @@ class ProfilePersistenceIT {
   }
 
   @Test
+  void databaseRejectsInvalidDecade() {
+    jdbc.update("INSERT INTO profiles (user_id) VALUES (34)");
+    assertThatThrownBy(() -> jdbc.update(
+        "INSERT INTO profile_favorite_decades (user_id, decade) VALUES (34, 1995)"))
+        .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
   void databaseRejectsDuplicateFavoriteGenre() {
     jdbc.update("INSERT INTO profiles (user_id) VALUES (34)");
     jdbc.update("INSERT INTO profile_favorite_genres (user_id, genre) VALUES (34, 'DRAMA')");
@@ -129,8 +137,11 @@ class ProfilePersistenceIT {
   void deletingProfileAlsoDeletesItsFavoriteGenres() {
     jdbc.update("INSERT INTO profiles (user_id) VALUES (34)");
     jdbc.update("INSERT INTO profile_favorite_genres (user_id, genre) VALUES (34, 'DRAMA')");
+    jdbc.update("INSERT INTO profile_favorite_decades (user_id, decade) VALUES (34, 1990)");
     jdbc.update("DELETE FROM profiles WHERE user_id = 34");
     assertThat(jdbc.queryForObject("SELECT count(*) FROM profile_favorite_genres", Integer.class))
+        .isZero();
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM profile_favorite_decades", Integer.class))
         .isZero();
   }
 }

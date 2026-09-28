@@ -37,6 +37,11 @@ public class Profile {
   @Column(name = "genre", nullable = false, length = 20)
   private Set<MovieGenre> favoriteGenres = new HashSet<>();
 
+  @ElementCollection
+  @CollectionTable(name = "profile_favorite_decades", joinColumns = @JoinColumn(name = "user_id"))
+  @Column(name = "decade", nullable = false)
+  private Set<Integer> favoriteDecades = new HashSet<>();
+
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
@@ -54,6 +59,11 @@ public class Profile {
 
   /** Replaces profile details; authentication and partial updates belong to the API layer. */
   public void updateDetails(String displayName, String bio, Set<MovieGenre> favoriteGenres) {
+    updateDetails(displayName, bio, favoriteGenres, favoriteDecades);
+  }
+
+  public void updateDetails(String displayName, String bio, Set<MovieGenre> favoriteGenres,
+      Set<Integer> favoriteDecades) {
     if (displayName == null || displayName.length() > 100) {
       throw new IllegalArgumentException("Display name must contain at most 100 characters");
     }
@@ -63,15 +73,23 @@ public class Profile {
     if (favoriteGenres == null || favoriteGenres.stream().anyMatch(genre -> genre == null)) {
       throw new IllegalArgumentException("Favorite genres must not be null or contain null");
     }
+    if (favoriteDecades == null || favoriteDecades.stream().anyMatch(decade -> decade == null
+        || decade < 1880 || decade > 2090 || decade % 10 != 0)) {
+      throw new IllegalArgumentException("Favorite decades must be multiples of 10 from 1880 to 2090");
+    }
     Set<MovieGenre> genres = new HashSet<>(favoriteGenres);
+    Set<Integer> decades = new HashSet<>(favoriteDecades);
     if (!this.displayName.equals(displayName)
         || !this.bio.equals(bio)
-        || !this.favoriteGenres.equals(genres)) {
+        || !this.favoriteGenres.equals(genres)
+        || !this.favoriteDecades.equals(decades)) {
       this.displayName = displayName;
       this.bio = bio;
       this.favoriteGenres.clear();
       this.favoriteGenres.addAll(genres);
-      // Marks the entity dirty even when only its element collection changes.
+      this.favoriteDecades.clear();
+      this.favoriteDecades.addAll(decades);
+      // Marks the entity dirty even when only its element collections change.
       this.updatedAt = Instant.now();
     }
   }
@@ -102,6 +120,10 @@ public class Profile {
 
   public Set<MovieGenre> getFavoriteGenres() {
     return Collections.unmodifiableSet(favoriteGenres);
+  }
+
+  public Set<Integer> getFavoriteDecades() {
+    return Collections.unmodifiableSet(favoriteDecades);
   }
 
   public Instant getCreatedAt() {

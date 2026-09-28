@@ -87,6 +87,45 @@ class InitialProfileCreationIT {
   }
 
   @Test
+  void createsInitialGenresWithTheProfile() {
+    ResponseEntity<String> response = createWithGenres(USER_ID, "DRAMA", "SCI_FI");
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    assertThat(jdbc.queryForList(
+        "SELECT genre FROM profile_favorite_genres WHERE user_id = ?", String.class, USER_ID))
+        .containsExactlyInAnyOrder("DRAMA", "SCI_FI");
+    assertThat(profiles.findById(USER_ID).orElseThrow().getDisplayName()).isEmpty();
+  }
+
+  @Test
+  void retryWithDifferentPreferencesCannotReplaceAnExistingProfile() {
+    assertThat(createWithGenres(USER_ID, "DRAMA").getStatusCode().value()).isEqualTo(201);
+    jdbc.update("UPDATE profiles SET display_name = 'Edited' WHERE user_id = ?", USER_ID);
+    Map<String, Object> before = jdbc.queryForMap("SELECT * FROM profiles WHERE user_id = ?", USER_ID);
+
+    assertThat(createWithGenres(USER_ID, "HORROR").getStatusCode().value()).isEqualTo(204);
+    assertThat(jdbc.queryForMap("SELECT * FROM profiles WHERE user_id = ?", USER_ID)).isEqualTo(before);
+    assertThat(jdbc.queryForList(
+        "SELECT genre FROM profile_favorite_genres WHERE user_id = ?", String.class, USER_ID))
+        .containsExactly("DRAMA");
+  }
+
+  @Test
+  void rejectsInvalidPreferenceBodiesWithoutCreatingAnEmptyProfile() {
+    for (Object body : List.of(
+        Map.of(),
+        Map.of("favoriteGenres", List.of()),
+        Map.of("favoriteGenres", List.of("WESTERN")),
+        Map.of("favoriteGenres", List.of("DRAMA", "NO_SUCH_GENRE")))) {
+      ResponseEntity<String> response = http.exchange("/internal/profiles/" + USER_ID,
+          HttpMethod.PUT, new HttpEntity<>(body), String.class);
+      assertThat(response.getStatusCode().value()).isEqualTo(400);
+      assertThat(response.getBody()).contains("INVALID_INITIAL_PROFILE");
+      assertThat(profiles.existsById(USER_ID)).isFalse();
+    }
+  }
+
+  @Test
   void createsIndependentProfilesForDifferentUsers() {
     assertThat(create(Long.toString(USER_ID)).getStatusCode().value()).isEqualTo(201);
     assertThat(create(Long.toString(OTHER_USER_ID)).getStatusCode().value()).isEqualTo(201);
@@ -108,7 +147,7 @@ class InitialProfileCreationIT {
           if (!start.await(10, TimeUnit.SECONDS)) {
             throw new IllegalStateException("Timed out waiting to start concurrent requests");
           }
-          return create(Long.toString(USER_ID)).getStatusCode().value();
+          return createWithGenres(USER_ID, "DRAMA", "SCI_FI").getStatusCode().value();
         }));
       }
       assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
@@ -122,6 +161,9 @@ class InitialProfileCreationIT {
       assertThat(statuses.stream().filter(status -> status == 204).count()).isEqualTo(requests - 1);
       assertThat(jdbc.queryForObject(
           "SELECT count(*) FROM profiles WHERE user_id = ?", Long.class, USER_ID)).isEqualTo(1);
+      assertThat(jdbc.queryForList(
+          "SELECT genre FROM profile_favorite_genres WHERE user_id = ?", String.class, USER_ID))
+          .containsExactlyInAnyOrder("DRAMA", "SCI_FI");
     } finally {
       start.countDown();
       executor.shutdownNow();
@@ -137,6 +179,11 @@ class InitialProfileCreationIT {
     assertThat(response.getStatusCode().value()).isEqualTo(400);
     assertThat(response.getBody()).contains("INVALID_USER_ID");
     assertThat(profiles.count()).isEqualTo(countBefore);
+  }
+
+  private ResponseEntity<String> createWithGenres(long userId, String... genres) {
+    return http.exchange("/internal/profiles/" + userId, HttpMethod.PUT,
+        new HttpEntity<>(Map.of("favoriteGenres", genres)), String.class);
   }
 
   private ResponseEntity<String> create(String userId) {

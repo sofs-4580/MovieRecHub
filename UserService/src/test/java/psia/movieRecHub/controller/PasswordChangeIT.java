@@ -152,7 +152,7 @@ class PasswordChangeIT {
   private Account account() {
     String username = "pw_" + UUID.randomUUID().toString().substring(0, 8);
     var registered = client.postForEntity("/api/auth/register",
-        Map.of("username", username, "password", OLD_PASSWORD), RegisterResponse.class);
+        Map.of("username", username, "password", OLD_PASSWORD, "favoriteGenres", List.of("DRAMA")), RegisterResponse.class);
     assertThat(registered.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     var loggedIn = client.postForEntity("/api/auth/login",
         Map.of("username", username, "password", OLD_PASSWORD), LoginResponse.class);
