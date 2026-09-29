@@ -89,6 +89,21 @@ class ProfilePersistenceIT {
   }
 
   @Test
+  void databaseRejectsDuplicateUsername() {
+    jdbc.update("INSERT INTO profiles (user_id, username) VALUES (34, 'film_fan')");
+    assertThatThrownBy(() -> jdbc.update(
+        "INSERT INTO profiles (user_id, username) VALUES (35, 'film_fan')"))
+        .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
+  void databaseRejectsNonCanonicalUsername() {
+    assertThatThrownBy(() -> jdbc.update(
+        "INSERT INTO profiles (user_id, username) VALUES (34, 'Film_Fan')"))
+        .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
   void databaseRejectsTwoProfilesForTheSameUser() {
     jdbc.update("INSERT INTO profiles (user_id) VALUES (34)");
     assertThatThrownBy(() -> jdbc.update("INSERT INTO profiles (user_id) VALUES (34)"))

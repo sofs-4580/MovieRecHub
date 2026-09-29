@@ -27,8 +27,12 @@ public class InternalProfileController {
   public ResponseEntity<Void> createInitialProfile(
       @PathVariable @Positive Long userId,
       @Valid @RequestBody(required = false) InitialProfileRequest request) {
-    // Bodyless calls remain valid for pending jobs from before registration preferences existed.
-    if (profiles.createInitialProfile(userId, request == null ? Set.of() : request.favoriteGenres())) {
+    // Legacy pending jobs may have no genres; new delivery still supplies their username.
+    if (request != null && request.favoriteGenres().isEmpty() && request.username() == null) {
+      throw new IllegalArgumentException("Initial genres are required without a username");
+    }
+    if (profiles.createInitialProfile(userId, request == null ? null : request.username(),
+        request == null ? Set.of() : request.favoriteGenres())) {
       return ResponseEntity.created(URI.create("/internal/profiles/" + userId)).build();
     }
     return ResponseEntity.noContent().build();

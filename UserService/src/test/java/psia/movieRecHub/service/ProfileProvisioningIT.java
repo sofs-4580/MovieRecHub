@@ -57,7 +57,7 @@ class ProfileProvisioningIT {
   @Test
   void failedDeliveryRemainsPendingAndIsNotRetriedBeforeDueTime() {
     RegisterResponse account = register();
-    doThrow(new ResourceAccessException("unavailable")).when(client).createInitialProfile(anyLong(), org.mockito.ArgumentMatchers.anySet());
+    doThrow(new ResourceAccessException("unavailable")).when(client).createInitialProfile(anyLong(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anySet());
 
     assertThat(provisioning.processNext()).isTrue();
     assertThat(pending(account.userId())).isEqualTo(1);
@@ -69,14 +69,14 @@ class ProfileProvisioningIT {
         "SELECT last_error FROM pending_profiles WHERE user_id = ?", String.class, account.userId()))
         .isEqualTo("DELIVERY_FAILED");
     assertThat(provisioning.processNext()).isFalse();
-    verify(client, times(1)).createInitialProfile(account.userId(), Set.of("DRAMA", "SCI_FI"));
+    verify(client, times(1)).createInitialProfile(account.userId(), account.username(), Set.of("DRAMA", "SCI_FI"));
   }
 
   @Test
   void retryAfterRecoveryRemovesPendingDelivery() {
     RegisterResponse account = register();
     doThrow(new ResourceAccessException("unavailable")).doNothing()
-        .when(client).createInitialProfile(account.userId(), Set.of("DRAMA", "SCI_FI"));
+        .when(client).createInitialProfile(account.userId(), account.username(), Set.of("DRAMA", "SCI_FI"));
     assertThat(provisioning.processNext()).isTrue();
     jdbc.update("UPDATE pending_profiles SET next_attempt_at = CURRENT_TIMESTAMP WHERE user_id = ?",
         account.userId());
@@ -84,7 +84,7 @@ class ProfileProvisioningIT {
     assertThat(provisioning.processNext()).isTrue();
     assertThat(pending(account.userId())).isZero();
     assertThat(provisioning.processNext()).isFalse();
-    verify(client, times(2)).createInitialProfile(account.userId(), Set.of("DRAMA", "SCI_FI"));
+    verify(client, times(2)).createInitialProfile(account.userId(), account.username(), Set.of("DRAMA", "SCI_FI"));
   }
 
   @Test

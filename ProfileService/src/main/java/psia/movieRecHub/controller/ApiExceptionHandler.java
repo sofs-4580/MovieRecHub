@@ -26,7 +26,8 @@ public class ApiExceptionHandler {
     return invalidUserId ? invalidUserId() : invalidInitialPreferences();
   }
 
-  @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class})
+  @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,
+      IllegalArgumentException.class})
   public ResponseEntity<ApiErrorResponse> invalidInitialPreferences() {
     return ResponseEntity.badRequest()
         .body(new ApiErrorResponse("INVALID_INITIAL_PROFILE", "Invalid initial profile preferences"));

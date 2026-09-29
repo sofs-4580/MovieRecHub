@@ -37,16 +37,24 @@ class ProfileClientTest {
   @ValueSource(ints = {201, 204})
   void acceptsCreatedAndAlreadyExistingResponses(int status) {
     respond(status);
-    assertThatCode(() -> client().createInitialProfile(34L, Set.of("DRAMA", "SCI_FI"))).doesNotThrowAnyException();
+    assertThatCode(() -> client().createInitialProfile(34L, "movie_fan", Set.of("DRAMA", "SCI_FI"))).doesNotThrowAnyException();
     assertThat(request.get()).isEqualTo("PUT /internal/profiles/34");
-    assertThat(body.get()).contains("favoriteGenres", "DRAMA", "SCI_FI");
+    assertThat(body.get()).contains("username", "movie_fan", "favoriteGenres", "DRAMA", "SCI_FI");
+  }
+
+  @org.junit.jupiter.api.Test
+  void sendsUsernameForLegacyJobWithoutGenres() {
+    respond(201);
+    client().createInitialProfile(34L, "legacy_fan", Set.of());
+    assertThat(body.get()).contains("\"username\":\"legacy_fan\"",
+        "\"favoriteGenres\":[]");
   }
 
   @ParameterizedTest
   @ValueSource(ints = {200, 202, 400, 404, 500, 503})
   void rejectsFailuresAndUnexpectedSuccessStatuses(int status) {
     respond(status);
-    assertThatThrownBy(() -> client().createInitialProfile(34L, Set.of("DRAMA", "SCI_FI")))
+    assertThatThrownBy(() -> client().createInitialProfile(34L, "movie_fan", Set.of("DRAMA", "SCI_FI")))
         .isInstanceOf(RestClientException.class);
   }
 

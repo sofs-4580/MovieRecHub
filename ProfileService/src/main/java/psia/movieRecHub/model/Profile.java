@@ -25,6 +25,9 @@ public class Profile {
   @Column(name = "user_id", nullable = false, updatable = false)
   private Long userId;
 
+  @Column(name = "username", length = 30)
+  private String username;
+
   @Column(name = "display_name", nullable = false, length = 100)
   private String displayName = "";
 
@@ -108,6 +111,10 @@ public class Profile {
 
   public Long getUserId() {
     return userId;
+  }
+
+  public String getUsername() {
+    return username;
   }
 
   public String getDisplayName() {

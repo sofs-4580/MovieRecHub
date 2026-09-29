@@ -98,6 +98,48 @@ class InitialProfileCreationIT {
   }
 
   @Test
+  void createsUsernameAndBackfillsOnlyMissingUsernameOnRetry() {
+    ResponseEntity<String> created = http.exchange("/internal/profiles/" + USER_ID,
+        HttpMethod.PUT, new HttpEntity<>(Map.of(
+            "username", "film_fan", "favoriteGenres", List.of("DRAMA"))), String.class);
+    assertThat(created.getStatusCode().value()).isEqualTo(201);
+    assertThat(jdbc.queryForObject("SELECT username FROM profiles WHERE user_id = ?",
+        String.class, USER_ID)).isEqualTo("film_fan");
+
+    jdbc.update("UPDATE profiles SET display_name = 'Edited' WHERE user_id = ?", USER_ID);
+    ResponseEntity<String> retry = http.exchange("/internal/profiles/" + USER_ID,
+        HttpMethod.PUT, new HttpEntity<>(Map.of(
+            "username", "film_fan", "favoriteGenres", List.of("HORROR"))), String.class);
+    assertThat(retry.getStatusCode().value()).isEqualTo(204);
+    assertThat(jdbc.queryForObject("SELECT display_name FROM profiles WHERE user_id = ?",
+        String.class, USER_ID)).isEqualTo("Edited");
+    assertThat(jdbc.queryForList("SELECT genre FROM profile_favorite_genres WHERE user_id = ?",
+        String.class, USER_ID)).containsExactly("DRAMA");
+
+    jdbc.update("UPDATE profiles SET username = NULL WHERE user_id = ?", USER_ID);
+    ResponseEntity<String> backfilled = http.exchange("/internal/profiles/" + USER_ID,
+        HttpMethod.PUT, new HttpEntity<>(Map.of(
+            "username", "film_fan", "favoriteGenres", List.of("HORROR"))), String.class);
+    assertThat(backfilled.getStatusCode().value()).isEqualTo(204);
+    assertThat(jdbc.queryForObject("SELECT username FROM profiles WHERE user_id = ?",
+        String.class, USER_ID)).isEqualTo("film_fan");
+    assertThat(jdbc.queryForObject("SELECT display_name FROM profiles WHERE user_id = ?",
+        String.class, USER_ID)).isEqualTo("Edited");
+  }
+
+  @Test
+  void acceptsLegacyPendingJobWithUsernameAndNoGenres() {
+    ResponseEntity<String> response = http.exchange("/internal/profiles/" + USER_ID,
+        HttpMethod.PUT, new HttpEntity<>(Map.of(
+            "username", "legacy_fan", "favoriteGenres", List.of())), String.class);
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    assertThat(jdbc.queryForObject("SELECT username FROM profiles WHERE user_id = ?",
+        String.class, USER_ID)).isEqualTo("legacy_fan");
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM profile_favorite_genres WHERE user_id = ?",
+        Integer.class, USER_ID)).isZero();
+  }
+
+  @Test
   void retryWithDifferentPreferencesCannotReplaceAnExistingProfile() {
     assertThat(createWithGenres(USER_ID, "DRAMA").getStatusCode().value()).isEqualTo(201);
     jdbc.update("UPDATE profiles SET display_name = 'Edited' WHERE user_id = ?", USER_ID);

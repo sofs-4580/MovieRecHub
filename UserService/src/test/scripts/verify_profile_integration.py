@@ -160,7 +160,8 @@ def main():
                         PROFILE_PROVISIONING_ENABLED="true")
         profile_env = dict(os.environ, PROFILE_DB_URL=profiles["url"], PROFILE_DB_USERNAME=profiles["role"],
                            PROFILE_DB_PASSWORD=profiles["password"],
-                           USER_SERVICE_URL=f"http://127.0.0.1:{user_port}")
+                           USER_SERVICE_URL=f"http://127.0.0.1:{user_port}",
+                           PROFILE_USERNAME_BACKFILL_POLL_DELAY="200")
         credentials = dict(username="recovery_" + secrets.token_hex(4), password="password-testing-123",
                            favoriteGenres=["DRAMA", "SCI_FI"])
         with application("UserService", "user-service-1.0.jar", user_env, user_port):
@@ -173,6 +174,13 @@ def main():
                                                           "password": credentials["password"]})[0] == 200
             assert 'DRAMA' in users["sql"](f"SELECT favorite_genres::text FROM pending_profiles WHERE user_id={user_id}")
             assert 'SCI_FI' in users["sql"](f"SELECT favorite_genres::text FROM pending_profiles WHERE user_id={user_id}")
+            legacy_credentials = dict(username="legacy_" + secrets.token_hex(4),
+                                      password="password-testing-123", favoriteGenres=["DRAMA"])
+            legacy_status, legacy_account = post(user_port, "/api/auth/register", legacy_credentials)
+            assert legacy_status == 201
+            legacy_id = int(legacy_account["userId"])
+            # Simulate a pending row created before initial genres became mandatory.
+            users["sql"](f"UPDATE pending_profiles SET favorite_genres = '[]'::jsonb WHERE user_id={legacy_id}")
             print("PASS: registration and login while ProfileService is unavailable; initial genres persisted.", flush=True)
         assert users["sql"](f"SELECT count(*) FROM pending_profiles WHERE user_id={user_id}") == "1"
         with application("UserService", "user-service-1.0.jar", user_env, user_port):
@@ -180,10 +188,31 @@ def main():
             eventually(lambda: users["sql"](f"SELECT count(*) FROM pending_profiles WHERE user_id={user_id}") == "0",
                        "recovery after restart")
             assert profiles["sql"](f"SELECT count(*) FROM profiles WHERE user_id={user_id}") == "1"
+            assert profiles["sql"](f"SELECT username FROM profiles WHERE user_id={user_id}") == credentials["username"]
             assert set(profiles["sql"](f"SELECT genre FROM profile_favorite_genres WHERE user_id={user_id} ORDER BY genre").splitlines()) == {"DRAMA", "SCI_FI"}
+            eventually(lambda: users["sql"](f"SELECT count(*) FROM pending_profiles WHERE user_id={legacy_id}") == "0",
+                       "legacy pending delivery")
+            assert profiles["sql"](f"SELECT username FROM profiles WHERE user_id={legacy_id}") == legacy_credentials["username"]
+            assert profiles["sql"](f"SELECT count(*) FROM profile_favorite_genres WHERE user_id={legacy_id}") == "0"
             print("PASS: UserService restart retains the job and preferences; recovery creates the initialized profile.", flush=True)
+            print("PASS: legacy pending job with empty genres creates a searchable profile.", flush=True)
 
             cookie = login_cookie(user_port, credentials)
+            public_headers = {"Cookie": cookie}
+            with urllib.request.urlopen(urllib.request.Request(
+                    f"http://127.0.0.1:{profile_port}/api/profiles?username={credentials['username'].upper()}",
+                    headers=public_headers), timeout=10) as response:
+                results = json.load(response)
+                assert results["totalElements"] == 1
+                assert results["items"][0]["userId"] == user_id
+            with urllib.request.urlopen(urllib.request.Request(
+                    f"http://127.0.0.1:{profile_port}/api/profiles/{user_id}",
+                    headers=public_headers), timeout=10) as response:
+                assert json.load(response)["username"] == credentials["username"]
+            profiles["sql"](f"UPDATE profiles SET username = NULL WHERE user_id={user_id}")
+            eventually(lambda: profiles["sql"](f"SELECT username FROM profiles WHERE user_id={user_id}")
+                       == credentials["username"], "username backfill over UserService HTTP")
+            print("PASS: public username search/detail and background backfill over HTTP.", flush=True)
             try:
                 own_profile(profile_port, "JSESSIONID=invalid")
                 raise AssertionError("ProfileService accepted an invalid session")

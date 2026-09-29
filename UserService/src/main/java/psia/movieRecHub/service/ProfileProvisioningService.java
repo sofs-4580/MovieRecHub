@@ -11,23 +11,26 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import psia.movieRecHub.repository.PendingProfileRepository;
+import psia.movieRecHub.repository.UserRepository;
 
 @Service
 public class ProfileProvisioningService {
 
   private static final Logger log = LoggerFactory.getLogger(ProfileProvisioningService.class);
   private final PendingProfileRepository pending;
+  private final UserRepository users;
   private final ProfileClient client;
   private final long retryDelayMillis;
 
   public ProfileProvisioningService(
-      PendingProfileRepository pending,
+      PendingProfileRepository pending, UserRepository users,
       ProfileClient client,
       @Value("${profile.provisioning.retry-delay}") Duration retryDelay) {
     if (retryDelay.toMillis() <= 0) {
       throw new IllegalArgumentException("Profile retry delay must be positive");
     }
     this.pending = pending;
+    this.users = users;
     this.client = client;
     this.retryDelayMillis = retryDelay.toMillis();
   }
@@ -42,7 +45,8 @@ public class ProfileProvisioningService {
     PendingProfileCreation creation = next.get();
     long userId = creation.userId();
     try {
-      client.createInitialProfile(userId, creation.favoriteGenres());
+      String username = users.findById(userId).orElseThrow().getUsername();
+      client.createInitialProfile(userId, username, creation.favoriteGenres());
     } catch (RestClientException exception) {
       String error = exception instanceof RestClientResponseException response
           ? "HTTP_" + response.getStatusCode().value() : "DELIVERY_FAILED";

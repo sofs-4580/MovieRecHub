@@ -29,12 +29,10 @@ public class ProfileClient {
     client = builder.baseUrl(baseUrl).requestFactory(factory).build();
   }
 
-  public void createInitialProfile(long userId, Set<String> favoriteGenres) {
+  public void createInitialProfile(long userId, String username, Set<String> favoriteGenres) {
     var request = client.put().uri("/internal/profiles/{userId}", userId);
-    int status = favoriteGenres.isEmpty()
-        ? request.retrieve().toBodilessEntity().getStatusCode().value()
-        : request.body(Map.of("favoriteGenres", favoriteGenres))
-            .retrieve().toBodilessEntity().getStatusCode().value();
+    int status = request.body(Map.of("username", username, "favoriteGenres", favoriteGenres))
+        .retrieve().toBodilessEntity().getStatusCode().value();
     if (status != 201 && status != 204) {
       throw new RestClientException("Unexpected profile creation status: " + status);
     }
