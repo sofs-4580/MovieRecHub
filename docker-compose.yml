@@ -19,6 +19,36 @@ services:
       - SPRING_DATASOURCE_PASSWORD=password
       - SERVER_PORT=8082
       - TMDB_API_KEY=${TMDB_API_KEY} #movies db API Key
+      - RECOMMENDATION_SERVICE_URL=http://recommendation-service:8083
+    networks:
+      - psianet
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - psianet
+
+  recommendation-service:
+    build:
+      context: .
+      dockerfile: RecomendationService/Dockerfile
+    container_name: recommendation-service
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    depends_on:
+      - movie-service
+      - ollama
+    environment:
+      - SERVER_PORT=8083
+      - MOVIE_SERVICE_URL=http://movie-service:8082
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:1b
     networks:
       - psianet
 
@@ -46,6 +76,7 @@ services:
 
 volumes:
   postgres-movie-data:
+  ollama-data:
   # postgres-user-data:
   # postgres-recommendation-data:
 
