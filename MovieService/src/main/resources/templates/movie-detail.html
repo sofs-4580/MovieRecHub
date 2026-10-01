@@ -10,6 +10,7 @@
 <nav class="navbar navbar-expand-lg bg-body-tertiary mb-4">
     <div class="container">
         <a class="navbar-brand" href="/movies">🎬 Movie Recommendation Hub</a>
+        <a class="nav-link" href="/lists">Lists</a>
     </div>
 </nav>
 
@@ -23,6 +24,35 @@
     <p><strong>Director:</strong> <span th:text="${movie.director()}"></span></p>
     <p><strong>Cast:</strong> <span th:text="${movie.actors()}"></span></p>
     <p>⭐ <span th:text="${movie.avgRating() > 0} ? ${#numbers.formatDecimal(movie.avgRating(), 1, 1)} : 'No reviews yet'"></span></p>
+
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <form th:if="${userId != null}" th:action="@{/movies/{id}/like(id=${movie.id()})}" method="post">
+            <input type="hidden" name="userId" th:value="${userId}"/>
+            <button type="submit" class="btn btn-sm"
+                    th:classappend="${liked} ? 'btn-primary' : 'btn-outline-primary'"
+                    th:text="${liked} ? '👍 Liked' : '👍 Like'">Like</button>
+        </form>
+        <span class="text-muted" th:text="${likeCount} + ' likes'">0 likes</span>
+        <span class="text-muted small" th:if="${userId == null}">(enter your user id below to like)</span>
+    </div>
+
+    <hr>
+    <h4>Add to a list</h4>
+    <!-- TODO: remover o pedido de userId quando houver sessao -->
+    <form method="get" th:action="@{/movies/{id}(id=${movie.id()})}" class="d-flex gap-2 mb-2">
+        <input type="number" name="userId" class="form-control w-auto" placeholder="Your user id"
+               th:value="${userId}" required/>
+        <button type="submit" class="btn btn-outline-secondary">Load my lists</button>
+    </form>
+    <form th:if="${lists != null}" method="post" class="d-flex gap-2"
+          th:action="@{/lists/add}">
+        <input type="hidden" name="userId" th:value="${userId}"/>
+        <input type="hidden" name="movieId" th:value="${movie.id()}"/>
+        <select name="listId" class="form-select w-auto">
+            <option th:each="l : ${lists}" th:value="${l.id()}" th:text="${l.name()}"></option>
+        </select>
+        <button type="submit" class="btn btn-primary">Add</button>
+    </form>
 
     <hr>
     <h4>Reviews</h4>

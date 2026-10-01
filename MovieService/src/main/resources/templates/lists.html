@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>My lists — Movie Recommendation Hub</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg bg-body-tertiary mb-4">
+    <div class="container">
+        <a class="navbar-brand" href="/movies">🎬 Movie Recommendation Hub</a>
+        <a class="nav-link" href="/lists">Lists</a>
+    </div>
+</nav>
+
+<div class="container mt-4">
+
+    <h2>Lists</h2>
+    <hr>
+
+    <div th:if="${message}" class="alert alert-success" th:text="${message}"></div>
+    <div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
+
+    <!-- TODO: remover quando houver sessao do UserService -->
+    <form method="get" th:action="@{/lists}" class="mb-4 d-flex gap-2">
+        <input type="number" name="userId" class="form-control w-auto" placeholder="Your user id"
+               th:value="${userId}" required/>
+        <button type="submit" class="btn btn-primary">Show my lists</button>
+    </form>
+
+    <div th:if="${userId != null}">
+        <p><a th:href="@{/likes(userId=${userId})}">👍 Liked movies</a></p>
+        <div class="row row-cols-1 row-cols-md-3 g-4 mb-4" th:if="${lists != null and not #lists.isEmpty(lists)}">
+            <div class="col" th:each="l : ${lists}">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title" th:text="${l.name()}">Name</h5>
+                        <p class="card-text text-muted small" th:text="${l.description()}"></p>
+                        <p class="card-text small">
+                            <span class="badge text-bg-secondary" th:text="${l.type()}"></span>
+                            <span class="badge text-bg-light" th:text="${l.visibility()}"></span>
+                            <span th:text="${l.movieCount()} + ' movies'"></span>
+                        </p>
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <a th:href="@{/lists/{id}(id=${l.id()}, userId=${userId})}"
+                           class="btn btn-outline-primary btn-sm w-100">Open</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h5>New playlist</h5>
+        <form th:action="@{/lists}" method="post" class="row g-2">
+            <input type="hidden" name="userId" th:value="${userId}"/>
+            <div class="col-auto">
+                <input type="text" name="name" maxlength="100" class="form-control" placeholder="Name" required/>
+            </div>
+            <div class="col-auto">
+                <input type="text" name="description" maxlength="500" class="form-control" placeholder="Description"/>
+            </div>
+            <div class="col-auto">
+                <select name="visibility" class="form-select">
+                    <option th:each="v : ${visibilities}" th:value="${v}" th:text="${v}"></option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Create</button>
+            </div>
+        </form>
+    </div>
+
+</div>
+</body>
+</html>

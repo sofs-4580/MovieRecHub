@@ -1,10 +1,18 @@
 package psia.movieRecHub.controller;
 
+import java.util.stream.Collectors;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import psia.movieRecHub.exceptions.DuplicateListException;
 import psia.movieRecHub.exceptions.DuplicateReviewException;
+import psia.movieRecHub.exceptions.ListAccessDeniedException;
+import psia.movieRecHub.exceptions.ListItemNotFoundException;
+import psia.movieRecHub.exceptions.ListNotFoundException;
 import psia.movieRecHub.exceptions.MovieNotFoundException;
 import psia.movieRecHub.exceptions.ReviewNotFoundException;
 
@@ -39,6 +47,62 @@ public class GlobalExceptionHandler {
     problemDetail.setProperty("message", ex.getMessage());
     problemDetail.setProperty("errorCode", "REVIEW_ERR_002");
 
+    return problemDetail;
+  }
+
+  @ExceptionHandler({ListNotFoundException.class, ListItemNotFoundException.class})
+  public ProblemDetail handleListNotFound(RuntimeException ex) {
+    ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+    problemDetail.setDetail("List or list item not found");
+    problemDetail.setProperty("message", ex.getMessage());
+    problemDetail.setProperty("errorCode", "LIST_ERR_001");
+    return problemDetail;
+  }
+
+  @ExceptionHandler(ListAccessDeniedException.class)
+  public ProblemDetail handleListAccessDenied(ListAccessDeniedException ex) {
+    ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+    problemDetail.setDetail("Forbidden");
+    problemDetail.setProperty("message", ex.getMessage());
+    problemDetail.setProperty("errorCode", "LIST_ERR_002");
+    return problemDetail;
+  }
+
+  @ExceptionHandler(DuplicateListException.class)
+  public ProblemDetail handleDuplicateList(DuplicateListException ex) {
+    ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+    problemDetail.setDetail("Duplicate list or list item");
+    problemDetail.setProperty("message", ex.getMessage());
+    problemDetail.setProperty("errorCode", "LIST_ERR_003");
+    return problemDetail;
+  }
+
+  @ExceptionHandler(MethodArgumentNotValidException.class)
+  public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
+    ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+    problemDetail.setDetail("Validation failed");
+    problemDetail.setProperty(
+        "message",
+        ex.getBindingResult().getFieldErrors().stream()
+            .map(e -> e.getField() + ": " + e.getDefaultMessage())
+            .collect(Collectors.joining("; ")));
+    return problemDetail;
+  }
+
+  @ExceptionHandler(MissingRequestHeaderException.class)
+  public ProblemDetail handleMissingHeader(MissingRequestHeaderException ex) {
+    ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+    problemDetail.setDetail("Missing header");
+    problemDetail.setProperty("message", ex.getMessage());
+    return problemDetail;
+  }
+
+  // Corrida entre dois pedidos que passam a verificacao e batem na constraint unique da BD
+  @ExceptionHandler(DataIntegrityViolationException.class)
+  public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
+    ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+    problemDetail.setDetail("Conflict with existing data");
+    problemDetail.setProperty("errorCode", "DB_ERR_001");
     return problemDetail;
   }
 

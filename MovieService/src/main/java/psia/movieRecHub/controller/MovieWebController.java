@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import psia.movieRecHub.dto.request.ReviewRequestDto;
 import psia.movieRecHub.entities.MovieGenre;
+import psia.movieRecHub.service.MovieListService;
 import psia.movieRecHub.service.MovieService;
 import psia.movieRecHub.service.ReviewService;
 
@@ -18,10 +19,13 @@ public class MovieWebController {
 
   private final MovieService movieService;
   private final ReviewService reviewService;
+  private final MovieListService listService;
 
-  public MovieWebController(MovieService movieService, ReviewService reviewService) {
+  public MovieWebController(
+      MovieService movieService, ReviewService reviewService, MovieListService listService) {
     this.movieService = movieService;
     this.reviewService = reviewService;
+    this.listService = listService;
   }
 
   @ModelAttribute("genres")
@@ -37,10 +41,15 @@ public class MovieWebController {
   }
 
   @GetMapping("/movies/{id}")
-  public String movieDetail(@PathVariable Long id, Model model) {
+  public String movieDetail(
+      @PathVariable Long id, @RequestParam(required = false) Long userId, Model model) {
     try {
       model.addAttribute("movie", movieService.getMovieById(id));
       model.addAttribute("reviews", reviewService.getReviewsByMovie(id));
+      model.addAttribute("userId", userId);
+      if (userId != null) { // TODO: sessao; por agora o userId vem na query string
+        model.addAttribute("lists", listService.getListsOfUser(userId, userId));
+      }
       return "movie-detail";
     } catch (RuntimeException ex) {
       model.addAttribute("error", ex.getMessage());
