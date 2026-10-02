@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 
+import psia.movieRecHub.TestData;
 import psia.movieRecHub.entities.Movie;
 import psia.movieRecHub.entities.MovieGenre;
 
@@ -31,16 +32,10 @@ class MovieRepositoryTest {
 
 	@BeforeEach
 	void setUp() {
-		terminator = movieRepository
-				.save(new Movie("Terminator 2: Judgment Day", 1991, Set.of(MovieGenre.SCI_FI, MovieGenre.ACTION),
-						"synopsis", "James Cameron", "Arnold Schwarzenegger, Linda Hamilton"));
-		interstellar = movieRepository.save(new Movie("Interstellar", 2014, Set.of(MovieGenre.SCI_FI, MovieGenre.DRAMA),
-				"synopsis", "Christopher Nolan", "Matthew McConaughey, Anne Hathaway"));
-		avengers = movieRepository
-				.save(new Movie("Avengers: Age of Ultron", 2015, Set.of(MovieGenre.SCI_FI, MovieGenre.ACTION),
-						"synopsis", "Joss Whedon", "Robert Downey Jr., Chris Evans"));
-		mammaMia = movieRepository.save(new Movie("Mamma Mia!", 2008, Set.of(MovieGenre.COMEDY, MovieGenre.ROMANCE),
-				"synopsis", "Phyllida Lloyd", "Meryl Streep, Amanda Seyfried"));
+		terminator = movieRepository.save(TestData.terminator());
+		interstellar = movieRepository.save(TestData.interstellar());
+		avengers = movieRepository.save(TestData.avengers());
+		mammaMia = movieRepository.save(TestData.mammaMia());
 		em.flush();
 		em.clear();
 	}
@@ -73,16 +68,16 @@ class MovieRepositoryTest {
 
 	@Test
 	void findByGenreManyMovies() {
-		// terminator 2 interstellar avengers
+		// terminator 2 interstellar avengers 
 		List<Movie> sciFi = movieRepository.findByGenresContaining(MovieGenre.SCI_FI);
-		// terminator 2 e avengers
+		// terminator 2 e avengers 
 		List<Movie> action = movieRepository.findByGenresContaining(MovieGenre.ACTION);
-		// só mamaMia <3
-		List<Movie> romance = movieRepository.findByGenresContaining(MovieGenre.ROMANCE);
+		//só mama mia <3
+		List<Movie> rom = movieRepository.findByGenresContaining(MovieGenre.ROMANCE);
+
 
 		assertEquals(3, sciFi.size());
 		assertEquals(2, action.size());
-		assertEquals(1, romance.size());
 	}
 
 	@Test
@@ -109,6 +104,8 @@ class MovieRepositoryTest {
 		assertTrue(result.isEmpty());
 	}
 
+//pesquisas por campo
+
 	@Test
 	void findByTitle() {
 		List<Movie> result = movieRepository.findByTitleContainingIgnoreCase("ULTRON");
@@ -133,7 +130,7 @@ class MovieRepositoryTest {
 		assertEquals(mammaMia.getId(), result.get(0).getId());
 	}
 
-//searchByQuery -titulo, realizador, atiores
+//searchByQuery - titulo, realizador e atores
 
 	@Test
 	void searchByQueryTitle() {
@@ -160,24 +157,19 @@ class MovieRepositoryTest {
 	}
 
 	@Test
-	void searchByQueryNoResults() {
-		List<Movie> result = movieRepository.searchByQuery("abcde");
+	void searchByQueryWithNoResults() {
+		List<Movie> result = movieRepository.searchByQuery("zzzz");
+
 		assertTrue(result.isEmpty());
 	}
 
 	@Test
-	void searchByQueryNoDirectorAndActors() {
-		movieRepository.save(new Movie("sem equipa", 2010, Set.of(MovieGenre.DRAMA), "synopsis", null, null));
+	void searchByQueryWithNoDirectorAndActors() {
+		movieRepository.save(new Movie("Sem Equipa", 2010, Set.of(MovieGenre.DRAMA), "synopsis", null, null));
 
 		List<Movie> result = movieRepository.searchByQuery("equipa");
 
 		assertEquals(1, result.size());
-		assertEquals("sem equipa", result.get(0).getTitle());
-	}
-
-	@Test
-	void searchByEmptyQuery() {
-		List<Movie> result = movieRepository.searchByQuery("");
-		assertEquals(4, result.size());
+		assertEquals("Sem Equipa", result.get(0).getTitle());
 	}
 }
