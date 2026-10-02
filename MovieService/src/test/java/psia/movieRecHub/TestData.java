@@ -38,4 +38,24 @@ public final class TestData {
 		ReflectionTestUtils.setField(list, "id", id);
 		return list;
 	}
+	
+	public static Movie terminator() {
+		return new Movie("Terminator 2: Judgment Day", 1991, Set.of(MovieGenre.SCI_FI, MovieGenre.ACTION),
+				"synopsis", "James Cameron", "Arnold Schwarzenegger, Linda Hamilton");
+	}
+
+	public static Movie interstellar() {
+		return new Movie("Interstellar", 2014, Set.of(MovieGenre.SCI_FI, MovieGenre.DRAMA),
+				"synopsis", "Christopher Nolan", "Matthew McConaughey, Anne Hathaway");
+	}
+
+	public static Movie avengers() {
+		return new Movie("Avengers: Age of Ultron", 2015, Set.of(MovieGenre.SCI_FI, MovieGenre.ACTION),
+				"synopsis", "Joss Whedon", "Robert Downey Jr., Chris Evans");
+	}
+
+	public static Movie mammaMia() {
+		return new Movie("Mamma Mia!", 2008, Set.of(MovieGenre.COMEDY, MovieGenre.ROMANCE),
+				"synopsis", "Phyllida Lloyd", "Meryl Streep, Amanda Seyfried");
+	}
 }
