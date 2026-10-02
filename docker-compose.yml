@@ -37,6 +37,23 @@ services:
     networks:
       - psianet
 
+  # ---- frontend (paginas Thymeleaf; fala com os microservicos pela API REST) -----
+  frontend:
+    build:
+      context: .
+      dockerfile: Frontend/Dockerfile
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - movie-service
+    environment:
+      - SERVER_PORT=8080
+      - MOVIE_SERVICE_URL=http://movie-service:8082
+    networks:
+      - psianet
+
   # ---- user-service ----------------------------------------------------------------
   # Descomentar quando o UserService/Dockerfile existir e o serviço buildar.
 
