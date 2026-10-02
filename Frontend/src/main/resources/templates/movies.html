@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Movies — Movie Recommendation Hub</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('movies')}"></aside>
+
+    <main class="main">
+        <h1 class="page-title">Movies</h1>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <!-- filtro por genero -->
+        <div class="pills">
+            <a class="pill" th:href="@{/movies}" th:classappend="${genre == null} ? 'active'">All</a>
+            <a class="pill" th:each="g : ${genres}"
+               th:href="@{/movies(genre=${g})}"
+               th:classappend="${g == genre} ? 'active'"
+               th:text="${#strings.replace(#strings.toLowerCase(g), '_', '-')}">genre</a>
+        </div>
+
+        <div class="grid" th:if="${movies != null and not #lists.isEmpty(movies)}">
+            <a class="card" th:each="m : ${movies}" th:href="@{/movies/{id}(id=${m.id()})}">
+                <div class="poster" th:classappend="'tone-' + ${m.id() % 6}"
+                     th:text="${#strings.substring(m.title(), 0, 1)}">M</div>
+                <div class="card-title" th:text="${m.title()}">Title</div>
+                <div class="card-meta"
+                     th:text="${m.releaseYear()} + ' · ' + ${#strings.replace(#strings.toLowerCase(#strings.setJoin(m.genres(), ', ')), '_', '-')}">
+                    Year · genres
+                </div>
+                <div class="card-foot">
+                    <span class="star">★</span>
+                    <span th:text="${m.avgRating() > 0} ? ${#numbers.formatDecimal(m.avgRating(), 1, 1)} : 'No reviews'"></span>
+                </div>
+            </a>
+        </div>
+
+        <p class="empty" th:if="${movies != null and #lists.isEmpty(movies)}">No movies found.</p>
+    </main>
+
+</div>
+</body>
+</html>
