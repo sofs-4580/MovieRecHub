@@ -116,7 +116,7 @@ public class GlobalExceptionHandler {
 		return problemDetail;
 	}
 
-	//valor com tipo errado
+	// valor com tipo errado
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
 	public ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
 		ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
@@ -125,20 +125,12 @@ public class GlobalExceptionHandler {
 		return problemDetail;
 	}
 
-	//parametro em falta
+	// parametro em falta
 	@ExceptionHandler(MissingServletRequestParameterException.class)
 	public ProblemDetail handleMissingParameter(MissingServletRequestParameterException ex) {
 		ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
 		problemDetail.setDetail("Missing parameter");
 		problemDetail.setProperty("message", ex.getMessage());
-		return problemDetail;
-	}
-
-	//corpo do pedido que nao e JSON valido (ou com um valor de enum que nao existe)
-	@ExceptionHandler(HttpMessageNotReadableException.class)
-	public ProblemDetail handleUnreadableBody(HttpMessageNotReadableException ex) {
-		ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
-		problemDetail.setDetail("Malformed request body");
 		return problemDetail;
 	}
 
