@@ -16,65 +16,59 @@ import psia.movieRecHub.repositories.ReviewRepository;
 @Service
 public class ReviewService {
 
-  @Autowired private ReviewRepository reviewRepository;
-  @Autowired private MovieRepository movieRepository;
+	@Autowired
+	private ReviewRepository reviewRepository;
+	@Autowired
+	private MovieRepository movieRepository;
 
-  public ReviewResponseDto createReview(ReviewRequestDto dto) {
-    Movie movie =
-        movieRepository
-            .findById(dto.getMovieId())
-            .orElseThrow(() -> new MovieNotFoundException(dto.getMovieId()));
+	public ReviewResponseDto createReview(ReviewRequestDto dto) {
 
-    reviewRepository
-        .findByUserIdAndMovieId(dto.getUserId(), dto.getMovieId())
-        .ifPresent(
-            r -> {
-              throw new DuplicateReviewException(dto.getUserId(), dto.getMovieId());
-            });
+		if (dto.getRating() < 1 || dto.getRating() > 5) {
+			throw new IllegalArgumentException("Rating must be between 1 and 5");
+		}
+		
+		Movie movie = movieRepository.findById(dto.getMovieId())
+				.orElseThrow(() -> new MovieNotFoundException(dto.getMovieId()));
 
-    Review review = new Review(dto.getRating(), dto.getComment(), dto.getUserId(), movie);
-    Review saved = reviewRepository.save(review);
+		reviewRepository.findByUserIdAndMovieId(dto.getUserId(), dto.getMovieId()).ifPresent(r -> {
+			throw new DuplicateReviewException(dto.getUserId(), dto.getMovieId());
+		});
 
-    recalculateAvgRating(movie);
+		Review review = new Review(dto.getRating(), dto.getComment(), dto.getUserId(), movie);
+		Review saved = reviewRepository.save(review);
 
-    return mapToResponse(saved);
-  }
+		recalculateAvgRating(movie);
 
-  public List<ReviewResponseDto> getReviewsByMovie(Long movieId) {
-    return reviewRepository.findReviewsByMovieOrderedByMostRecent(movieId).stream()
-        .map(this::mapToResponse)
-        .toList();
-  }
+		return mapToResponse(saved);
+	}
 
-  public List<ReviewResponseDto> getReviewsByUser(Long userId) {
-    return reviewRepository.findByUserId(userId).stream().map(this::mapToResponse).toList();
-  }
+	public List<ReviewResponseDto> getReviewsByMovie(Long movieId) {
+		return reviewRepository.findReviewsByMovieOrderedByMostRecent(movieId).stream().map(this::mapToResponse)
+				.toList();
+	}
 
-  public void deleteReview(Long reviewId) {
-    Review review =
-        reviewRepository
-            .findById(reviewId)
-            .orElseThrow(() -> new ReviewNotFoundException(reviewId));
-    Movie movie = review.getMovie();
-    reviewRepository.delete(review);
-    recalculateAvgRating(movie);
-  }
+	public List<ReviewResponseDto> getReviewsByUser(Long userId) {
+		return reviewRepository.findByUserId(userId).stream().map(this::mapToResponse).toList();
+	}
 
-  // Recalcula e persiste o avgRating do filme a partir de todas as reviews atuais.
-  private void recalculateAvgRating(Movie movie) {
-    List<Review> reviews = reviewRepository.findByMovieId(movie.getId());
-    double avg = reviews.stream().mapToInt(Review::getRating).average().orElse(0.0);
-    movie.setAvgRating(avg);
-    movieRepository.save(movie);
-  }
+	public void deleteReview(Long reviewId) {
+		Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new ReviewNotFoundException(reviewId));
+		Movie movie = review.getMovie();
+		reviewRepository.delete(review);
+		recalculateAvgRating(movie);
+	}
 
-  private ReviewResponseDto mapToResponse(Review review) {
-    return new ReviewResponseDto(
-        review.getId(),
-        review.getUserId(),
-        review.getMovie().getId(),
-        review.getRating(),
-        review.getComment(),
-        review.getCreatedAt());
-  }
+	// Recalcula e persiste o avgRating do filme a partir de todas as reviews
+	// atuais.
+	private void recalculateAvgRating(Movie movie) {
+		List<Review> reviews = reviewRepository.findByMovieId(movie.getId());
+		double avg = reviews.stream().mapToInt(Review::getRating).average().orElse(0.0);
+		movie.setAvgRating(avg);
+		movieRepository.save(movie);
+	}
+
+	private ReviewResponseDto mapToResponse(Review review) {
+		return new ReviewResponseDto(review.getId(), review.getUserId(), review.getMovie().getId(), review.getRating(),
+				review.getComment(), review.getCreatedAt());
+	}
 }

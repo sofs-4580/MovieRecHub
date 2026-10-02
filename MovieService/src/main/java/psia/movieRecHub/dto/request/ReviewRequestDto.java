@@ -1,12 +1,14 @@
 package psia.movieRecHub.dto.request;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public class ReviewRequestDto {
   @NotNull private Long userId;
   @NotNull private Long movieId;
-  @NotNull private int rating;
+  @Min(1) @Max(5) private int rating;
   @NotBlank private String comment;
 
   public ReviewRequestDto() {}
