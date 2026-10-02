@@ -4,7 +4,8 @@ services:
     environment:
       POSTGRES_DB: movie_rec_hub_users
       POSTGRES_USER: user_service
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD before starting the database}
+      # Local development: connections do not require a password.
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "127.0.0.1:${DB_PORT:-5433}:5432"
     volumes:

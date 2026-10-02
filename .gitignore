@@ -33,3 +33,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+/UserService/src/test/
+/ProfileService/src/test/
+/Frontend/test/
