@@ -219,4 +219,19 @@ class ReviewServiceTest {
 		verify(reviewRepository, never()).delete(any());
 		verify(movieRepository, never()).save(any());
 	}
+
+	// bad review
+
+	@Test
+	void createReviewWithRatingOutOfRange() {
+		ReviewRequestDto dto = new ReviewRequestDto();
+		dto.setUserId(2L);
+		dto.setMovieId(1L);
+		dto.setRating(6);
+		dto.setComment("bom");
+
+		assertThrows(IllegalArgumentException.class, () -> reviewService.createReview(dto));
+
+		verify(reviewRepository, never()).save(any());
+	}
 }
