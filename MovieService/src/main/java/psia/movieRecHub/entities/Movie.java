@@ -11,84 +11,89 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import java.util.HashSet;
 import java.util.Set;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 
 @Entity
 public class Movie {
 
-  @Id
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
-  private Long id;
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
 
-  @Column(nullable = false)
-  private String title;
+	@Column(nullable = false)
+	private String title;
 
-  @Column(nullable = false)
-  private int releaseYear;
+	@Column(nullable = false)
+	private int releaseYear;
 
-  @ElementCollection(targetClass = MovieGenre.class, fetch = FetchType.EAGER)
-  @Enumerated(EnumType.STRING)
-  private Set<MovieGenre> genres = new HashSet<>();
+	@ElementCollection(targetClass = MovieGenre.class, fetch = FetchType.EAGER)
 
-  @Column(length = 2000)
-  private String synopsis;
+//os generos sao carregados numa query separada, em vez de serem join na query q carrega os movies
+//(antes tavamos c intens + movies + generos)
+	@Fetch(FetchMode.SELECT)
 
-  @Column(nullable = false)
-  private double avgRating = 0.0;
+	@Enumerated(EnumType.STRING)
+	private Set<MovieGenre> genres = new HashSet<>();
 
-  @Column private String director;
+	@Column(length = 2000)
+	private String synopsis;
 
-  @Column private String actors;
+	@Column(nullable = false)
+	private double avgRating = 0.0;
 
-  protected Movie() {}
+	@Column
+	private String director;
 
-  public Movie(
-      String title,
-      int releaseYear,
-      Set<MovieGenre> genres,
-      String synopsis,
-      String director,
-      String actors) {
-    this.title = title;
-    this.releaseYear = releaseYear;
-    this.genres = genres;
-    this.synopsis = synopsis;
-    this.director = director;
-    this.actors = actors;
-  }
+	@Column
+	private String actors;
 
-  public Long getId() {
-    return id;
-  }
+	protected Movie() {
+	}
 
-  public String getTitle() {
-    return title;
-  }
+	public Movie(String title, int releaseYear, Set<MovieGenre> genres, String synopsis, String director,
+			String actors) {
+		this.title = title;
+		this.releaseYear = releaseYear;
+		this.genres = genres;
+		this.synopsis = synopsis;
+		this.director = director;
+		this.actors = actors;
+	}
 
-  public int getReleaseYear() {
-    return releaseYear;
-  }
+	public Long getId() {
+		return id;
+	}
 
-  public Set<MovieGenre> getGenres() {
-    return genres;
-  }
+	public String getTitle() {
+		return title;
+	}
 
-  public String getSynopsis() {
-    return synopsis;
-  }
+	public int getReleaseYear() {
+		return releaseYear;
+	}
 
-  public double getAvgRating() {
-    return avgRating;
-  }
+	public Set<MovieGenre> getGenres() {
+		return genres;
+	}
 
-  public void setAvgRating(double avgRating) {
-    this.avgRating = avgRating;
-  }
+	public String getSynopsis() {
+		return synopsis;
+	}
 
-  public String getDirector() {
-    return director;
-  }
+	public double getAvgRating() {
+		return avgRating;
+	}
 
-  public String getActors() {
-    return actors;
-  }
+	public void setAvgRating(double avgRating) {
+		this.avgRating = avgRating;
+	}
+
+	public String getDirector() {
+		return director;
+	}
+
+	public String getActors() {
+		return actors;
+	}
 }
