@@ -54,7 +54,7 @@ services:
     ports:
       - "127.0.0.1:${MOVIE_DB_PORT:-5435}:5432"
     volumes:
-      - movie-db-data:/var/lib/postgresql/data
+      - postgres-movie-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d moviedb"]
       interval: 5s
@@ -110,4 +110,4 @@ services:
 volumes:
   users-db-data:
   profiles-db-data:
-  movie-db-data:
+  postgres-movie-data:
