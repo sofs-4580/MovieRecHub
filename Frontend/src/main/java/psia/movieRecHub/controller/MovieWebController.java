@@ -1,6 +1,7 @@
 package psia.movieRecHub.controller;
 
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,64 +18,82 @@ import psia.movieRecHub.dto.MovieGenre;
 @Controller
 public class MovieWebController {
 
-	private final MovieServiceClient movieClient;
-	private final CurrentUser currentUser;
+  private final MovieServiceClient movieClient;
+  private final CurrentUser currentUser;
+  private final String accountFrontendUrl;
 
-	public MovieWebController(MovieServiceClient movieClient, CurrentUser currentUser) {
-		this.movieClient = movieClient;
-		this.currentUser = currentUser;
-	}
+  public MovieWebController(
+      MovieServiceClient movieClient,
+      CurrentUser currentUser,
+      @Value("${account.frontend.url}") String accountFrontendUrl) {
+    this.movieClient = movieClient;
+    this.currentUser = currentUser;
+    this.accountFrontendUrl = accountFrontendUrl;
+  }
 
-	@ModelAttribute("genres")
-	public MovieGenre[] genres() {
-		return MovieGenre.values(); // para preencher o filtro de generos no template
-	}
+  @ModelAttribute("genres")
+  public MovieGenre[] genres() {
+    return MovieGenre.values(); // para preencher o filtro de generos no template
+  }
 
-	@ModelAttribute("userId")
-	public Long userId() {
-		return currentUser.getId();
-	}
+  @ModelAttribute("userId")
+  public Long userId() {
+    return currentUser.getId();
+  }
 
-	@GetMapping("/")
-	public String home(RedirectAttributes ra) {
-		return "redirect:/movies";
-	}
+  @GetMapping("/")
+  public String home(RedirectAttributes ra) {
+    return "redirect:/movies";
+  }
 
-	@GetMapping("/movies")
-	public String listMovies(@RequestParam(required = false) MovieGenre genre, Model model) {
-		model.addAttribute("genre", genre);
-		try {
-			model.addAttribute("movies", movieClient.getMovies(genre));
-		} catch (MovieServiceException ex) {
-			model.addAttribute("movies", List.of());
-			model.addAttribute("error", ex.getMessage());
-		}
-		return "movies";
-	}
+  @GetMapping("/movies")
+  public String listMovies(@RequestParam(required = false) MovieGenre genre, Model model) {
+    model.addAttribute("genre", genre);
+    try {
+      model.addAttribute("movies", movieClient.getMovies(genre));
+    } catch (MovieServiceException ex) {
+      model.addAttribute("movies", List.of());
+      model.addAttribute("error", ex.getMessage());
+    }
+    return "movies";
+  }
 
-	@GetMapping("/movies/{id}")
-	public String movieDetail(@PathVariable Long id, Model model, RedirectAttributes ra) {
-		Long userId = currentUser.getId();
-		try {
-			model.addAttribute("movie", movieClient.getMovie(id));
-			model.addAttribute("reviews", movieClient.getReviewsByMovie(id));
-			model.addAttribute("lists", movieClient.getListsOfUser(userId, userId));
-			return "movie-detail";
-		} catch (MovieServiceException ex) {
-			ra.addFlashAttribute("error", ex.getMessage());
-			return "redirect:/movies";
-		}
-	}
+  @GetMapping("/movies/{id}")
+  public String movieDetail(@PathVariable Long id, Model model, RedirectAttributes ra) {
+    Long userId = currentUser.getId();
+    try {
+      model.addAttribute("movie", movieClient.getMovie(id));
+      model.addAttribute("reviews", movieClient.getReviewsByMovie(id));
+      if (userId != null) {
+        model.addAttribute("lists", movieClient.getListsOfUser(userId, userId));
+      }
+      return "movie-detail";
+    } catch (MovieServiceException ex) {
+      ra.addFlashAttribute("error", ex.getMessage());
+      return "redirect:/movies";
+    }
+  }
 
-	@PostMapping("/movies/{id}/review")
-	public String addReview(@PathVariable Long id, @RequestParam int rating,
-			@RequestParam(required = false) String comment, RedirectAttributes ra) {
-		try {
-			movieClient.createReview(currentUser.getId(), id, rating, comment);
-			ra.addFlashAttribute("message", "Review added successfully!");
-		} catch (MovieServiceException ex) {
-			ra.addFlashAttribute("error", ex.getMessage());
-		}
-		return "redirect:/movies/" + id;
-	}
+  @PostMapping("/movies/{id}/review")
+  public String addReview(
+      @PathVariable Long id,
+      @RequestParam int rating,
+      @RequestParam(required = false) String comment,
+      RedirectAttributes ra) {
+    Long userId = currentUser.getId();
+    if (userId == null) {
+      return loginRedirect();
+    }
+    try {
+      movieClient.createReview(userId, id, rating, comment);
+      ra.addFlashAttribute("message", "Review added successfully!");
+    } catch (MovieServiceException ex) {
+      ra.addFlashAttribute("error", ex.getMessage());
+    }
+    return "redirect:/movies/" + id;
+  }
+
+  private String loginRedirect() {
+    return "redirect:" + accountFrontendUrl + "/#login";
+  }
 }

@@ -16,7 +16,7 @@
 
         <div th:replace="~{fragments/layout :: alerts}"></div>
 
-        <div class="grid" th:if="${lists != null and not #lists.isEmpty(lists)}">
+        <div class="grid" th:if="${userId != null and lists != null and not #lists.isEmpty(lists)}">
             <a class="card" th:each="l : ${lists}" th:href="@{/lists/{id}(id=${l.id()})}">
                 <div class="poster cover" th:classappend="'tone-' + ${l.id() % 6}"
                      th:text="${#strings.substring(l.name(), 0, 1)}">L</div>
@@ -27,10 +27,13 @@
                 <div class="card-foot" th:text="${l.description()}"></div>
             </a>
         </div>
-        <p class="empty" th:if="${lists == null or #lists.isEmpty(lists)}">No lists yet.</p>
+        <p class="empty" th:if="${userId == null}">
+            <a th:href="${accountLoginUrl}">Log in</a> to view and manage your lists.
+        </p>
+        <p class="empty" th:if="${userId != null and (lists == null or #lists.isEmpty(lists))}">No lists yet.</p>
 
-        <h2 class="section-title">New playlist</h2>
-        <form th:action="@{/lists}" method="post" class="panel form-row">
+        <h2 class="section-title" th:if="${userId != null}">New playlist</h2>
+        <form th:if="${userId != null}" th:action="@{/lists}" method="post" class="panel form-row">
             <input type="text" name="name" maxlength="100" class="input" placeholder="Name" required/>
             <input type="text" name="description" maxlength="500" class="input input-grow" placeholder="Description"/>
             <select name="visibility" class="select">

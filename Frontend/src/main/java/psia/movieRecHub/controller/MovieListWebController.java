@@ -1,5 +1,7 @@
 package psia.movieRecHub.controller;
 
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,91 +19,125 @@ import psia.movieRecHub.dto.MovieListDetailDto;
 @Controller
 public class MovieListWebController {
 
-	private final MovieServiceClient movieClient;
-	private final CurrentUser currentUser;
+  private final MovieServiceClient movieClient;
+  private final CurrentUser currentUser;
+  private final String accountFrontendUrl;
 
-	public MovieListWebController(MovieServiceClient movieClient, CurrentUser currentUser) {
-		this.movieClient = movieClient;
-		this.currentUser = currentUser;
-	}
+  public MovieListWebController(
+      MovieServiceClient movieClient,
+      CurrentUser currentUser,
+      @Value("${account.frontend.url}") String accountFrontendUrl) {
+    this.movieClient = movieClient;
+    this.currentUser = currentUser;
+    this.accountFrontendUrl = accountFrontendUrl;
+  }
 
-	@ModelAttribute("visibilities")
-	public ListVisibility[] visibilities() {
-		return ListVisibility.values();
-	}
+  @ModelAttribute("visibilities")
+  public ListVisibility[] visibilities() {
+    return ListVisibility.values();
+  }
 
-	@ModelAttribute("userId")
-	public Long userId() {
-		return currentUser.getId();
-	}
+  @ModelAttribute("userId")
+  public Long userId() {
+    return currentUser.getId();
+  }
 
-	@GetMapping("/lists")
-	public String myLists(Model model) {
-		Long userId = currentUser.getId();
-		try {
-			model.addAttribute("lists", movieClient.getListsOfUser(userId, userId));
-		} catch (MovieServiceException ex) {
-			model.addAttribute("error", ex.getMessage());
-		}
-		return "lists";
-	}
+  @GetMapping("/lists")
+  public String myLists(Model model) {
+    Long userId = currentUser.getId();
+    if (userId == null) {
+      model.addAttribute("lists", List.of());
+      return "lists";
+    }
+    try {
+      model.addAttribute("lists", movieClient.getListsOfUser(userId, userId));
+    } catch (MovieServiceException ex) {
+      model.addAttribute("error", ex.getMessage());
+    }
+    return "lists";
+  }
 
-	@PostMapping("/lists")
-	public String createList(@RequestParam String name, @RequestParam(required = false) String description,
-			@RequestParam ListVisibility visibility, RedirectAttributes ra) {
-		try {
-			movieClient.createList(currentUser.getId(), name, description, visibility);
-			ra.addFlashAttribute("message", "List created!");
-		} catch (MovieServiceException ex) {
-			ra.addFlashAttribute("error", ex.getMessage());
-		}
-		return "redirect:/lists";
-	}
+  @PostMapping("/lists")
+  public String createList(
+      @RequestParam String name,
+      @RequestParam(required = false) String description,
+      @RequestParam ListVisibility visibility,
+      RedirectAttributes ra) {
+    Long userId = currentUser.getId();
+    if (userId == null) {
+      return loginRedirect();
+    }
+    try {
+      movieClient.createList(userId, name, description, visibility);
+      ra.addFlashAttribute("message", "List created!");
+    } catch (MovieServiceException ex) {
+      ra.addFlashAttribute("error", ex.getMessage());
+    }
+    return "redirect:/lists";
+  }
 
-	@GetMapping("/lists/{id}")
-	public String listDetail(@PathVariable Long id, Model model, RedirectAttributes ra) {
-		Long userId = currentUser.getId();
-		try {
-			MovieListDetailDto list = movieClient.getList(id, userId);
-			model.addAttribute("list", list);
-			model.addAttribute("isOwner", userId.equals(list.ownerId()));
-			return "list-detail";
-		} catch (MovieServiceException ex) {
-			ra.addFlashAttribute("error", ex.getMessage());
-			return "redirect:/lists";
-		}
-	}
+  @GetMapping("/lists/{id}")
+  public String listDetail(@PathVariable Long id, Model model, RedirectAttributes ra) {
+    Long userId = currentUser.getId();
+    try {
+      MovieListDetailDto list = movieClient.getList(id, userId);
+      model.addAttribute("list", list);
+      model.addAttribute("isOwner", userId != null && userId.equals(list.ownerId()));
+      return "list-detail";
+    } catch (MovieServiceException ex) {
+      ra.addFlashAttribute("error", ex.getMessage());
+      return "redirect:/lists";
+    }
+  }
 
-	@PostMapping("/lists/add")
-	public String addMovie(@RequestParam("listId") Long id, @RequestParam Long movieId, RedirectAttributes ra) {
-		try {
-			movieClient.addMovieToList(id, movieId, currentUser.getId());
-			ra.addFlashAttribute("message", "Movie added to list!");
-		} catch (MovieServiceException ex) {
-			ra.addFlashAttribute("error", ex.getMessage());
-		}
-		return "redirect:/movies/" + movieId;
-	}
+  @PostMapping("/lists/add")
+  public String addMovie(
+      @RequestParam("listId") Long id, @RequestParam Long movieId, RedirectAttributes ra) {
+    Long userId = currentUser.getId();
+    if (userId == null) {
+      return loginRedirect();
+    }
+    try {
+      movieClient.addMovieToList(id, movieId, userId);
+      ra.addFlashAttribute("message", "Movie added to list!");
+    } catch (MovieServiceException ex) {
+      ra.addFlashAttribute("error", ex.getMessage());
+    }
+    return "redirect:/movies/" + movieId;
+  }
 
-	@PostMapping("/lists/{id}/remove")
-	public String removeMovie(@PathVariable Long id, @RequestParam Long movieId, RedirectAttributes ra) {
-		try {
-			movieClient.removeMovieFromList(id, movieId, currentUser.getId());
-			ra.addFlashAttribute("message", "Movie removed.");
-		} catch (MovieServiceException ex) {
-			ra.addFlashAttribute("error", ex.getMessage());
-		}
-		return "redirect:/lists/" + id;
-	}
+  @PostMapping("/lists/{id}/remove")
+  public String removeMovie(
+      @PathVariable Long id, @RequestParam Long movieId, RedirectAttributes ra) {
+    Long userId = currentUser.getId();
+    if (userId == null) {
+      return loginRedirect();
+    }
+    try {
+      movieClient.removeMovieFromList(id, movieId, userId);
+      ra.addFlashAttribute("message", "Movie removed.");
+    } catch (MovieServiceException ex) {
+      ra.addFlashAttribute("error", ex.getMessage());
+    }
+    return "redirect:/lists/" + id;
+  }
 
-	@PostMapping("/lists/{id}/delete")
-	public String deleteList(@PathVariable Long id, RedirectAttributes ra) {
-		try {
-			movieClient.deleteList(id, currentUser.getId());
-			ra.addFlashAttribute("message", "List deleted.");
-		} catch (MovieServiceException ex) {
-			ra.addFlashAttribute("error", ex.getMessage());
-		}
-		return "redirect:/lists";
-	}
+  @PostMapping("/lists/{id}/delete")
+  public String deleteList(@PathVariable Long id, RedirectAttributes ra) {
+    Long userId = currentUser.getId();
+    if (userId == null) {
+      return loginRedirect();
+    }
+    try {
+      movieClient.deleteList(id, userId);
+      ra.addFlashAttribute("message", "List deleted.");
+    } catch (MovieServiceException ex) {
+      ra.addFlashAttribute("error", ex.getMessage());
+    }
+    return "redirect:/lists";
+  }
+
+  private String loginRedirect() {
+    return "redirect:" + accountFrontendUrl + "/#login";
+  }
 }

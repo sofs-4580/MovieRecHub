@@ -1,22 +1,60 @@
 package psia.movieRecHub.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.annotation.RequestScope;
+import psia.movieRecHub.client.UserServiceException;
+import psia.movieRecHub.client.UserSessionClient;
 
-/**
- * TODO: quando houver token do UserService, passar a ler dai, o resto nao
- * precisamos de mudar, porque já tamos a usuar o getId
- */
 @Component
+@RequestScope
 public class CurrentUser {
 
-	private final Long id;
+  private final HttpServletRequest request;
+  private final UserSessionClient userSessionClient;
+  private boolean resolved;
+  private boolean userServiceUnavailable;
+  private Long userId;
 
-	public CurrentUser(@Value("${app.current-user-id:1}") Long id) {
-		this.id = id;
-	}
+  public CurrentUser(HttpServletRequest request, UserSessionClient userSessionClient) {
+    this.request = request;
+    this.userSessionClient = userSessionClient;
+  }
 
-	public Long getId() {
-		return id;
-	}
+  public Long getId() {
+    if (resolved) {
+      return userId;
+    }
+    resolved = true;
+
+    String sessionId = sessionId();
+    if (sessionId == null) {
+      return null;
+    }
+    try {
+      userId = userSessionClient.findUserId(sessionId);
+    } catch (UserServiceException exception) {
+      userServiceUnavailable = true;
+    }
+    return userId;
+  }
+
+  public boolean isUserServiceUnavailable() {
+    getId();
+    return userServiceUnavailable;
+  }
+
+  private String sessionId() {
+    Cookie[] cookies = request.getCookies();
+    if (cookies == null) {
+      return null;
+    }
+    for (Cookie cookie : cookies) {
+      if ("JSESSIONID".equals(cookie.getName())) {
+        return cookie.getValue();
+      }
+    }
+    return null;
+  }
 }

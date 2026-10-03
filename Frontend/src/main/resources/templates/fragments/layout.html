@@ -12,8 +12,9 @@
         <a th:href="@{/movies}" th:classappend="${active == 'movies'} ? 'active'">Movies</a>
         <a th:href="@{/lists}" th:classappend="${active == 'lists'} ? 'active'">Lists</a>
     </nav>
-    <!-- TODO: trocar pelo nome do utilizador quando houver sessao -->
     <p class="sidebar-user" th:if="${userId != null}" th:text="'User ' + ${userId}">User 1</p>
+    <a class="sidebar-user" th:if="${userId == null}" th:href="${accountLoginUrl}">Log in</a>
+    <p class="sidebar-user" th:if="${userServiceUnavailable}">Account service unavailable</p>
 </aside>
 
 <!-- Mensagens de sucesso / erro -->

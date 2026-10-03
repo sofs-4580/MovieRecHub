@@ -39,7 +39,7 @@
             <span><strong>Cast</strong> · <span th:text="${movie.actors()}"></span></span>
         </div>
 
-        <h2 class="section-title">Add to a list</h2>
+                <h2 class="section-title" th:if="${userId != null}">Add to a list</h2>
         <form th:if="${lists != null and not #lists.isEmpty(lists)}" method="post" class="panel form-row"
               th:action="@{/lists/add}">
             <input type="hidden" name="movieId" th:value="${movie.id()}"/>
@@ -48,6 +48,9 @@
             </select>
             <button type="submit" class="btn">Add</button>
         </form>
+        <p class="empty" th:if="${userId == null}">
+            <a th:href="${accountLoginUrl}">Log in</a> to add this movie to your lists.
+        </p>
 
         <h2 class="section-title">Reviews</h2>
 
@@ -66,8 +69,8 @@
         </div>
         <p class="empty" th:if="${reviews != null and #lists.isEmpty(reviews)}">No reviews yet — be the first!</p>
 
-        <h2 class="section-title">Add a review</h2>
-        <form th:action="@{/movies/{id}/review(id=${movie.id()})}" method="post" class="panel stack">
+        <h2 class="section-title" th:if="${userId != null}">Add a review</h2>
+        <form th:if="${userId != null}" th:action="@{/movies/{id}/review(id=${movie.id()})}" method="post" class="panel stack">
             <!-- Estrelas: 5 botoes de radio escondidos; clicar numa estrela escolhe esse rating.
                  Estao por ordem 5..1 porque o CSS pinta "esta e as seguintes" e mostra-as ao contrario. -->
             <div class="stars-input">
@@ -87,6 +90,9 @@
                 <button type="submit" class="btn">Submit review</button>
             </div>
         </form>
+        <p class="empty" th:if="${userId == null}">
+            <a th:href="${accountLoginUrl}">Log in</a> to write a review.
+        </p>
 
     </main>
 
