@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>My lists — Movie Recommendation Hub</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('lists')}"></aside>
+
+    <main class="main">
+        <h1 class="page-title">Lists</h1>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <div class="grid" th:if="${lists != null and not #lists.isEmpty(lists)}">
+            <a class="card" th:each="l : ${lists}" th:href="@{/lists/{id}(id=${l.id()})}">
+                <div class="poster cover" th:classappend="'tone-' + ${l.id() % 6}"
+                     th:text="${#strings.substring(l.name(), 0, 1)}">L</div>
+                <div class="card-title" th:text="${l.name()}">Name</div>
+                <div class="card-meta" th:text="${l.movieCount()} + ' movies · ' + ${#strings.toLowerCase(l.visibility())}">
+                    0 movies · public
+                </div>
+                <div class="card-foot" th:text="${l.description()}"></div>
+            </a>
+        </div>
+        <p class="empty" th:if="${lists == null or #lists.isEmpty(lists)}">No lists yet.</p>
+
+        <h2 class="section-title">New playlist</h2>
+        <form th:action="@{/lists}" method="post" class="panel form-row">
+            <input type="text" name="name" maxlength="100" class="input" placeholder="Name" required/>
+            <input type="text" name="description" maxlength="500" class="input input-grow" placeholder="Description"/>
+            <select name="visibility" class="select">
+                <option th:each="v : ${visibilities}" th:value="${v}" th:text="${v}"></option>
+            </select>
+            <button type="submit" class="btn">Create</button>
+        </form>
+    </main>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!-- Barra lateral, igual em todas as paginas. "active" diz qual e a pagina atual: 'movies' ou 'lists'. -->
+<aside class="sidebar" th:fragment="sidebar(active)">
+    <a class="brand" th:href="@{/movies}">
+        <span class="brand-mark">🎬</span>
+        <span>Movie Recommendation Hub</span>
+    </a>
+    <nav class="nav">
+        <a th:href="@{/movies}" th:classappend="${active == 'movies'} ? 'active'">Movies</a>
+        <a th:href="@{/lists}" th:classappend="${active == 'lists'} ? 'active'">Lists</a>
+    </nav>
+    <!-- TODO: trocar pelo nome do utilizador quando houver sessao -->
+    <p class="sidebar-user" th:if="${userId != null}" th:text="'User ' + ${userId}">User 1</p>
+</aside>
+
+<!-- Mensagens de sucesso / erro -->
+<div th:fragment="alerts">
+    <div th:if="${message}" class="alert alert-ok" th:text="${message}"></div>
+    <div th:if="${error}" class="alert alert-error" th:text="${error}"></div>
+</div>
+
+</body>
+</html>

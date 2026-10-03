@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="${movie != null ? movie.title() : 'Movie'}">Movie</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('movies')}"></aside>
+
+    <main class="main" th:if="${movie != null}">
+
+        <a th:href="@{/movies}" class="back">&larr; Back to movies</a>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <div class="hero">
+            <div class="poster" th:classappend="'tone-' + ${movie.id() % 6}"
+                 th:text="${#strings.substring(movie.title(), 0, 1)}">M</div>
+            <div class="hero-info">
+                <div class="hero-kicker">Movie</div>
+                <h1 class="hero-title" th:text="${movie.title()}">Title</h1>
+                <p class="hero-meta">
+                    <strong th:text="${movie.releaseYear()}">Year</strong>
+                    <span th:text="' · ' + ${#strings.replace(#strings.toLowerCase(#strings.setJoin(movie.genres(), ', ')), '_', '-')}"></span>
+                    <span> · </span>
+                    <span class="star">★</span>
+                    <span th:text="${movie.avgRating() > 0} ? ${#numbers.formatDecimal(movie.avgRating(), 1, 1)} : 'No reviews yet'"></span>
+                </p>
+            </div>
+        </div>
+
+        <p class="lead" th:text="${movie.synopsis()}">Synopsis</p>
+        <div class="facts">
+            <span><strong>Director</strong> · <span th:text="${movie.director()}"></span></span>
+            <span><strong>Cast</strong> · <span th:text="${movie.actors()}"></span></span>
+        </div>
+
+        <h2 class="section-title">Add to a list</h2>
+        <form th:if="${lists != null and not #lists.isEmpty(lists)}" method="post" class="panel form-row"
+              th:action="@{/lists/add}">
+            <input type="hidden" name="movieId" th:value="${movie.id()}"/>
+            <select name="listId" class="select">
+                <option th:each="l : ${lists}" th:value="${l.id()}" th:text="${l.name()}"></option>
+            </select>
+            <button type="submit" class="btn">Add</button>
+        </form>
+
+        <h2 class="section-title">Reviews</h2>
+
+        <div th:if="${reviews != null and not #lists.isEmpty(reviews)}">
+            <div class="review" th:each="r : ${reviews}">
+                <div class="review-head">
+                    <span class="stars" th:title="${r.rating()} + ' out of 5'">
+                        <span th:each="n : ${#numbers.sequence(1, 5)}"
+                              th:classappend="${n le r.rating()} ? 'on'">★</span>
+                    </span>
+                    <span class="muted small" th:text="'user ' + ${r.userId()}">user 1</span>
+                    <span class="muted small" th:text="${#temporals.format(r.createdAt(), 'dd MMM yyyy')}">date</span>
+                </div>
+                <p th:text="${r.comment()}">Comment</p>
+            </div>
+        </div>
+        <p class="empty" th:if="${reviews != null and #lists.isEmpty(reviews)}">No reviews yet — be the first!</p>
+
+        <h2 class="section-title">Add a review</h2>
+        <form th:action="@{/movies/{id}/review(id=${movie.id()})}" method="post" class="panel stack">
+            <!-- Estrelas: 5 botoes de radio escondidos; clicar numa estrela escolhe esse rating.
+                 Estao por ordem 5..1 porque o CSS pinta "esta e as seguintes" e mostra-as ao contrario. -->
+            <div class="stars-input">
+                <input type="radio" id="star5" name="rating" value="5" required/>
+                <label for="star5" title="5 stars">★</label>
+                <input type="radio" id="star4" name="rating" value="4"/>
+                <label for="star4" title="4 stars">★</label>
+                <input type="radio" id="star3" name="rating" value="3"/>
+                <label for="star3" title="3 stars">★</label>
+                <input type="radio" id="star2" name="rating" value="2"/>
+                <label for="star2" title="2 stars">★</label>
+                <input type="radio" id="star1" name="rating" value="1"/>
+                <label for="star1" title="1 star">★</label>
+            </div>
+            <div class="form-row">
+                <input type="text" name="comment" class="input input-grow" placeholder="What did you think?" required/>
+                <button type="submit" class="btn">Submit review</button>
+            </div>
+        </form>
+
+    </main>
+
+</div>
+</body>
+</html>

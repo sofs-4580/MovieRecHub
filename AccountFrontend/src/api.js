@@ -51,4 +51,3 @@ export function loginAccount({ username, password }) {
 export function changeAccountPassword({ currentPassword, newPassword }) {
   return send("/api/users/me/password", "PATCH", { currentPassword, newPassword });
 }
-

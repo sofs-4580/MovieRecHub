@@ -4,6 +4,7 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 .cache/
+.env
 
 ### STS ###
 .apt_generated
@@ -36,4 +37,4 @@ build/
 
 /UserService/src/test/
 /ProfileService/src/test/
-/Frontend/test/
+/bin/

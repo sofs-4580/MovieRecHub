@@ -223,4 +223,3 @@ for (const link of document.querySelectorAll("a[data-nav]")) {
 
 window.addEventListener("hashchange", render);
 render();
-

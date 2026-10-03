@@ -1,10 +1,13 @@
-FROM node:22-alpine
-WORKDIR /app
-COPY --chown=node:node package.json server.mjs index.html styles.css ./
-COPY --chown=node:node src ./src
-USER node
-ENV FRONTEND_HOST=0.0.0.0 FRONTEND_PORT=3000
-EXPOSE 3000
-HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
-    CMD ["node", "-e", "fetch('http://127.0.0.1:' + process.env.FRONTEND_PORT, { signal: AbortSignal.timeout(3000) }).then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
-CMD ["node", "server.mjs"]
+FROM maven:3.9-eclipse-temurin-17 AS builder
+WORKDIR /workspace
+
+COPY Frontend/ Frontend/
+
+RUN mvn -f Frontend/pom.xml package -DskipTests -B
+
+FROM eclipse-temurin:17
+VOLUME /tmp
+RUN mkdir -p /app/logs/
+COPY --from=builder /workspace/Frontend/target/frontend-1.0.jar /app/app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

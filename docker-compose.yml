@@ -45,21 +45,69 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  frontend:
+  movie-db:
+    image: postgres:15.1-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: moviedb
+    ports:
+      - "127.0.0.1:${MOVIE_DB_PORT:-5435}:5432"
+    volumes:
+      - movie-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d moviedb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  movie-service:
     build:
-      context: ./Frontend
+      context: .
+      dockerfile: MovieService/Dockerfile
+    environment:
+      SERVER_PORT: "8082"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://movie-db:5432/moviedb
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: password
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+    ports:
+      - "127.0.0.1:${MOVIE_API_PORT:-8085}:8082"
+    depends_on:
+      movie-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  movie-frontend:
+    build:
+      context: .
+      dockerfile: Frontend/Dockerfile
+    environment:
+      SERVER_PORT: "8080"
+      MOVIE_SERVICE_URL: http://movie-service:8082
+      CURRENT_USER_ID: ${CURRENT_USER_ID:-1}
+    ports:
+      - "127.0.0.1:${MOVIE_FRONTEND_PORT:-8080}:8080"
+    depends_on:
+      - movie-service
+    restart: unless-stopped
+
+  account-frontend:
+    build:
+      context: ./AccountFrontend
     environment:
       FRONTEND_HOST: 0.0.0.0
       FRONTEND_PORT: "3000"
       USER_SERVICE_URL: http://user-service:8081
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+      - "127.0.0.1:${ACCOUNT_FRONTEND_PORT:-3000}:3000"
     depends_on:
       user-service:
         condition: service_healthy
     restart: unless-stopped
 
-# Volumes referenced by the extended database services must also be declared here.
 volumes:
   users-db-data:
   profiles-db-data:
+  movie-db-data:
