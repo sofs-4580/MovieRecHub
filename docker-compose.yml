@@ -1,4 +1,12 @@
+name: movie-rec-hub
+
+# Default ports (container == host port)
+#   frontend 8080 | user-service 8081 | profile-service 8082
+#   movie-service 8083 | recommendation-service 8084 (see commented block)
+#   DBs on the host: users 5433 | profiles 5434 | movies 5435
+
 services:
+  # ---------------------------------------------------------------- databases
   users-db:
     extends:
       file: ./UserService/compose.yaml
@@ -11,11 +19,17 @@ services:
       service: profiles-db
     restart: unless-stopped
 
+  movie-db:
+    extends:
+      file: ./MovieService/compose.yaml
+      service: movie-db
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------- services
   user-service:
     build:
       context: ./UserService
     environment:
-      SERVER_PORT: "8081"
       DB_URL: jdbc:postgresql://users-db:5432/movie_rec_hub_users
       DB_USERNAME: user_service
       DB_PASSWORD: ""
@@ -31,10 +45,9 @@ services:
     build:
       context: ./ProfileService
     environment:
-      SERVER_PORT: "8082"
-      PROFILE_DB_URL: jdbc:postgresql://profiles-db:5432/movie_rec_hub_profiles
-      PROFILE_DB_USERNAME: profile_service
-      PROFILE_DB_PASSWORD: ""
+      DB_URL: jdbc:postgresql://profiles-db:5432/movie_rec_hub_profiles
+      DB_USERNAME: profile_service
+      DB_PASSWORD: ""
       USER_SERVICE_URL: http://user-service:8081
     ports:
       - "127.0.0.1:${PROFILE_SERVICE_PORT:-8082}:8082"
@@ -45,73 +58,71 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  movie-db:
-    image: postgres:15.1-alpine
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: moviedb
-    ports:
-      - "127.0.0.1:${MOVIE_DB_PORT:-5435}:5432"
-    volumes:
-      - postgres-movie-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d moviedb"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
   movie-service:
     build:
-      context: .
-      dockerfile: MovieService/Dockerfile
+      context: ./MovieService
     environment:
-      SERVER_PORT: "8082"
-      SPRING_DATASOURCE_URL: jdbc:postgresql://movie-db:5432/moviedb
-      SPRING_DATASOURCE_USERNAME: user
-      SPRING_DATASOURCE_PASSWORD: password
+      DB_URL: jdbc:postgresql://movie-db:5432/movie_rec_hub_movies
+      DB_USERNAME: movie_service
+      DB_PASSWORD: ""
       TMDB_API_KEY: ${TMDB_API_KEY:-}
     ports:
-      - "127.0.0.1:${MOVIE_API_PORT:-8085}:8082"
+      - "127.0.0.1:${MOVIE_SERVICE_PORT:-8083}:8083"
     depends_on:
       movie-db:
         condition: service_healthy
     restart: unless-stopped
 
-  movie-frontend:
+  # --- RecommendationService: uncomment once feature/RecommendationService is merged ---
+  # ollama:
+  #   image: ollama/ollama
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   healthcheck:
+  #     test: ["CMD", "ollama", "list"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 10
+  #   restart: unless-stopped
+  #   # first run: docker compose exec ollama ollama pull llama3.2:1b
+  #
+  # recommendation-service:
+  #   build:
+  #     context: ./RecommendationService
+  #   environment:
+  #     MOVIE_SERVICE_URL: http://movie-service:8083
+  #     OLLAMA_URL: http://ollama:11434
+  #     OLLAMA_MODEL: llama3.2:1b
+  #   ports:
+  #     - "127.0.0.1:${RECOMMENDATION_SERVICE_PORT:-8084}:8084"
+  #   depends_on:
+  #     movie-service:
+  #       condition: service_healthy
+  #     ollama:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+  # ----------------------------------------------------------------- frontend
+  frontend:
     build:
-      context: .
-      dockerfile: Frontend/Dockerfile
+      context: ./Frontend
     environment:
-      SERVER_PORT: "8080"
-      MOVIE_SERVICE_URL: http://movie-service:8082
       USER_SERVICE_URL: http://user-service:8081
-      ACCOUNT_FRONTEND_URL: http://localhost:3000
+      PROFILE_SERVICE_URL: http://profile-service:8082
+      MOVIE_SERVICE_URL: http://movie-service:8083
     ports:
-      - "127.0.0.1:${MOVIE_FRONTEND_PORT:-8080}:8080"
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
     depends_on:
-      movie-service:
-        condition: service_started
       user-service:
         condition: service_healthy
-    restart: unless-stopped
-
-  account-frontend:
-    build:
-      context: ./AccountFrontend
-    environment:
-      FRONTEND_HOST: 0.0.0.0
-      FRONTEND_PORT: "3000"
-      USER_SERVICE_URL: http://user-service:8081
-    ports:
-      - "127.0.0.1:${ACCOUNT_FRONTEND_PORT:-3000}:3000"
-    depends_on:
-      user-service:
+      profile-service:
+        condition: service_healthy
+      movie-service:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
   users-db-data:
   profiles-db-data:
-  postgres-movie-data:
+  movie-db-data:
+  # ollama-data:
