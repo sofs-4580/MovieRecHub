@@ -227,7 +227,7 @@ The login session is a standard servlet session stored **in memory** in this ser
 
 Registering writes the user **and** a `pending_profiles` row in one transaction, so a registration is never lost. A scheduled worker (`ProfileProvisioningWorker`) then:
 
-1. locks the next due row (`FOR UPDATE SKIP LOCKED`-style, one job at a time),
+1. locks the next due row (`FOR UPDATE SKIP LOCKED`, one job at a time),
 2. calls `PUT /internal/profiles/{userId}` on ProfileService with the username and favourite genres,
 3. deletes the row on `201`/`204`, or reschedules it (`PROFILE_RETRY_DELAY`) and records `last_error` on failure.
 
