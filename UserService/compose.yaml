@@ -7,7 +7,7 @@ services:
       # Local development: connections do not require a password.
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "127.0.0.1:${DB_PORT:-5433}:5432"
+      - "127.0.0.1:${USER_DB_PORT:-5433}:5432"
     volumes:
       - users-db-data:/var/lib/postgresql/data
     healthcheck:
