@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="${profile.username() + ' — Movie Recommendation Hub'}">Profile</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('profiles')}"></aside>
+
+    <main class="main">
+        <a th:href="@{/profiles}" class="back">&larr; Back to people</a>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <div class="hero profile-hero">
+            <div class="avatar avatar-lg" th:text="${#strings.toUpperCase(#strings.substring(profile.username(), 0, 1))}">U</div>
+            <div class="hero-info">
+                <div class="hero-kicker">Profile</div>
+                <h1 class="hero-title"
+                    th:text="${#strings.isEmpty(profile.displayName()) ? profile.username() : profile.displayName()}">Name</h1>
+                <p class="muted" th:text="${'@' + profile.username()}">@user</p>
+                <p th:if="${isMe}"><a class="link" th:href="@{/profile}">Edit my profile</a></p>
+            </div>
+        </div>
+
+        <p class="lead" th:if="${not #strings.isEmpty(profile.bio())}" th:text="${profile.bio()}">Bio</p>
+
+        <h2 class="section-title">Favourite genres</h2>
+        <div class="badges" th:if="${not #lists.isEmpty(profile.favoriteGenres())}">
+            <span class="badge" th:each="g : ${profile.favoriteGenres()}"
+                  th:text="${#strings.replace(#strings.toLowerCase(g), '_', '-')}">drama</span>
+        </div>
+        <p class="empty" th:if="${#lists.isEmpty(profile.favoriteGenres())}">None yet.</p>
+
+        <th:block th:if="${not #lists.isEmpty(profile.favoriteDecades())}">
+            <h2 class="section-title">Favourite decades</h2>
+            <div class="badges">
+                <span class="badge" th:each="d : ${#lists.sort(#lists.toList(profile.favoriteDecades()))}" th:text="${d + 's'}">1980s</span>
+            </div>
+        </th:block>
+
+        <h2 class="section-title" th:text="${isMe ? 'My lists' : 'Public lists'}">Lists</h2>
+        <div class="grid" th:if="${lists != null and not #lists.isEmpty(lists)}">
+            <a class="card" th:each="l : ${lists}" th:href="@{/lists/{id}(id=${l.id()})}">
+                <div class="poster cover" th:classappend="'tone-' + ${l.id() % 6}"
+                     th:text="${#strings.substring(l.name(), 0, 1)}">L</div>
+                <div class="card-title" th:text="${l.name()}">Name</div>
+                <div class="card-meta" th:text="${l.movieCount() + ' movies · ' + #strings.toLowerCase(l.visibility())}">
+                    0 movies · public
+                </div>
+                <div class="card-foot" th:text="${l.description()}"></div>
+            </a>
+        </div>
+        <p class="empty" th:if="${lists == null or #lists.isEmpty(lists)}">No lists to show.</p>
+    </main>
+
+</div>
+</body>
+</html>

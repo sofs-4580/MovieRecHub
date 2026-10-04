@@ -49,7 +49,7 @@
             <button type="submit" class="btn">Add</button>
         </form>
         <p class="empty" th:if="${userId == null}">
-            <a th:href="${accountLoginUrl}">Log in</a> to add this movie to your lists.
+            <a th:href="@{/login}">Log in</a> to add this movie to your lists.
         </p>
 
         <h2 class="section-title">Reviews</h2>
@@ -61,7 +61,8 @@
                         <span th:each="n : ${#numbers.sequence(1, 5)}"
                               th:classappend="${n le r.rating()} ? 'on'">★</span>
                     </span>
-                    <span class="muted small" th:text="'user ' + ${r.userId()}">user 1</span>
+                    <a class="muted small link" th:if="${userId != null}" th:href="@{/profiles/{id}(id=${r.userId()})}" th:text="'user ' + ${r.userId()}">user 1</a>
+                    <span class="muted small" th:if="${userId == null}" th:text="'user ' + ${r.userId()}">user 1</span>
                     <span class="muted small" th:text="${#temporals.format(r.createdAt(), 'dd MMM yyyy')}">date</span>
                 </div>
                 <p th:text="${r.comment()}">Comment</p>
@@ -91,7 +92,7 @@
             </div>
         </form>
         <p class="empty" th:if="${userId == null}">
-            <a th:href="${accountLoginUrl}">Log in</a> to write a review.
+            <a th:href="@{/login}">Log in</a> to write a review.
         </p>
 
     </main>

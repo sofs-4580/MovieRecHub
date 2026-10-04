@@ -4,54 +4,75 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.annotation.RequestScope;
+import psia.movieRecHub.client.AuthenticatedSessionResponse;
 import psia.movieRecHub.client.UserServiceException;
 import psia.movieRecHub.client.UserSessionClient;
 
+/**
+ * The logged-in user of the current request. The login session lives in UserService; the browser
+ * holds its JSESSIONID cookie (relayed at login, see AuthWebController) and we validate it with
+ * UserService once per request.
+ */
 @Component
 @RequestScope
 public class CurrentUser {
+
+  public static final String SESSION_COOKIE = "JSESSIONID";
 
   private final HttpServletRequest request;
   private final UserSessionClient userSessionClient;
   private boolean resolved;
   private boolean userServiceUnavailable;
-  private Long userId;
+  private AuthenticatedSessionResponse session;
 
   public CurrentUser(HttpServletRequest request, UserSessionClient userSessionClient) {
     this.request = request;
     this.userSessionClient = userSessionClient;
   }
 
-  public Long getId() {
+  private void resolve() {
     if (resolved) {
-      return userId;
+      return;
     }
     resolved = true;
-
-    String sessionId = sessionId();
+    String sessionId = getSessionId();
     if (sessionId == null) {
-      return null;
+      return;
     }
     try {
-      userId = userSessionClient.findUserId(sessionId);
+      session = userSessionClient.findSession(sessionId);
     } catch (UserServiceException exception) {
       userServiceUnavailable = true;
     }
-    return userId;
+  }
+
+  public Long getId() {
+    resolve();
+    return session == null ? null : session.userId();
+  }
+
+  /** Falls back to "user N" when UserService does not return the username. */
+  public String getUsername() {
+    resolve();
+    if (session == null) {
+      return null;
+    }
+    return session.username() != null ? session.username() : "user " + session.userId();
   }
 
   public boolean isUserServiceUnavailable() {
-    getId();
+    resolve();
     return userServiceUnavailable;
   }
 
-  private String sessionId() {
+  /** The raw UserService session id from the browser cookie (not validated). */
+  public String getSessionId() {
     Cookie[] cookies = request.getCookies();
     if (cookies == null) {
       return null;
     }
     for (Cookie cookie : cookies) {
-      if ("JSESSIONID".equals(cookie.getName())) {
+      if (SESSION_COOKIE.equals(cookie.getName())) {
         return cookie.getValue();
       }
     }

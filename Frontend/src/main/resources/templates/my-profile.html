@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>My profile — Movie Recommendation Hub</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('profile')}"></aside>
+
+    <main class="main">
+        <h1 class="page-title">My profile</h1>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <!-- O UserService cria o perfil em segundo plano logo a seguir ao registo. -->
+        <div class="panel stack narrow" th:if="${notReady}">
+            <p>Your profile is still being set up. This usually takes a few seconds after registering.</p>
+            <div><a class="btn" th:href="@{/profile}">Check again</a></div>
+        </div>
+
+        <form th:if="${profile != null}" th:action="@{/profile}" method="post" class="panel stack narrow">
+            <label class="field">
+                <span>Display name</span>
+                <input type="text" name="displayName" class="input" maxlength="100"
+                       th:value="${profile.displayName()}" th:placeholder="${currentUsername}"/>
+            </label>
+            <label class="field">
+                <span>Bio</span>
+                <textarea name="bio" class="input textarea" maxlength="2000" rows="5"
+                          placeholder="Tell others what you like to watch"
+                          th:text="${profile.bio()}"></textarea>
+            </label>
+            <fieldset class="field">
+                <legend>Favourite genres <span class="muted small">(at least one)</span></legend>
+                <div th:replace="~{fragments/layout :: genreChips(name=favoriteGenres, selected=${profile.favoriteGenres()})}"></div>
+            </fieldset>
+            <fieldset class="field">
+                <legend>Favourite decades</legend>
+                <div class="chip-row">
+                    <label class="chip" th:each="d : ${decades}">
+                        <input type="checkbox" name="favoriteDecades" th:value="${d}"
+                               th:checked="${profile.favoriteDecades().contains(d)}"/>
+                        <span th:text="${d + 's'}">1980s</span>
+                    </label>
+                </div>
+            </fieldset>
+            <div class="form-row">
+                <button type="submit" class="btn">Save profile</button>
+                <a class="btn btn-ghost" th:href="@{/profiles/{id}(id=${profile.userId()})}">View public profile</a>
+            </div>
+        </form>
+    </main>
+
+</div>
+</body>
+</html>

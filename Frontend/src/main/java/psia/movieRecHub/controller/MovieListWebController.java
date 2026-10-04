@@ -1,7 +1,6 @@
 package psia.movieRecHub.controller;
 
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,25 +20,15 @@ public class MovieListWebController {
 
   private final MovieServiceClient movieClient;
   private final CurrentUser currentUser;
-  private final String accountFrontendUrl;
 
-  public MovieListWebController(
-      MovieServiceClient movieClient,
-      CurrentUser currentUser,
-      @Value("${account.frontend.url}") String accountFrontendUrl) {
+  public MovieListWebController(MovieServiceClient movieClient, CurrentUser currentUser) {
     this.movieClient = movieClient;
     this.currentUser = currentUser;
-    this.accountFrontendUrl = accountFrontendUrl;
   }
 
   @ModelAttribute("visibilities")
   public ListVisibility[] visibilities() {
     return ListVisibility.values();
-  }
-
-  @ModelAttribute("userId")
-  public Long userId() {
-    return currentUser.getId();
   }
 
   @GetMapping("/lists")
@@ -138,6 +127,6 @@ public class MovieListWebController {
   }
 
   private String loginRedirect() {
-    return "redirect:" + accountFrontendUrl + "/#login";
+    return "redirect:/login";
   }
 }

@@ -28,7 +28,7 @@
             </a>
         </div>
         <p class="empty" th:if="${userId == null}">
-            <a th:href="${accountLoginUrl}">Log in</a> to view and manage your lists.
+            <a th:href="@{/login}">Log in</a> to view and manage your lists.
         </p>
         <p class="empty" th:if="${userId != null and (lists == null or #lists.isEmpty(lists))}">No lists yet.</p>
 

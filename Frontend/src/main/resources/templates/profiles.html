@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>People — Movie Recommendation Hub</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('profiles')}"></aside>
+
+    <main class="main">
+        <h1 class="page-title">People</h1>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <form th:action="@{/profiles}" method="get" class="panel form-row">
+            <input type="search" name="username" class="input input-grow" maxlength="30"
+                   th:value="${query}" placeholder="Search by username"/>
+            <button type="submit" class="btn">Search</button>
+        </form>
+
+        <div class="rows" style="margin-top: 24px" th:if="${result != null and not #lists.isEmpty(result.items())}">
+            <a class="row" th:each="p : ${result.items()}" th:href="@{/profiles/{id}(id=${p.userId()})}">
+                <div class="avatar row-thumb" th:text="${#strings.toUpperCase(#strings.substring(p.username(), 0, 1))}">U</div>
+                <div class="row-main">
+                    <span class="row-title" th:text="${#strings.isEmpty(p.displayName()) ? p.username() : p.displayName()}">Name</span>
+                    <div class="row-sub" th:text="${'@' + p.username()}">@user</div>
+                </div>
+            </a>
+        </div>
+        <p class="empty" th:if="${result != null and #lists.isEmpty(result.items())}">No profiles found.</p>
+
+        <div class="pager" th:if="${result != null and result.totalPages() > 1}">
+            <a class="btn btn-ghost btn-sm" th:if="${result.page() > 0}"
+               th:href="@{/profiles(username=${query}, page=${result.page() - 1})}">&larr; Previous</a>
+            <span class="muted" th:text="${'Page ' + (result.page() + 1) + ' of ' + result.totalPages()}">Page 1 of 2</span>
+            <a class="btn btn-ghost btn-sm" th:if="${result.page() + 1 < result.totalPages()}"
+               th:href="@{/profiles(username=${query}, page=${result.page() + 1})}">Next &rarr;</a>
+        </div>
+    </main>
+
+</div>
+</body>
+</html>

@@ -21,7 +21,8 @@ public class UserSessionClient {
     this.userServiceUrl = userServiceUrl;
   }
 
-  public Long findUserId(String sessionId) {
+  /** Returns the logged-in user for this UserService session id, or null if not logged in. */
+  public AuthenticatedSessionResponse findSession(String sessionId) {
     if (sessionId == null || sessionId.isBlank()) {
       return null;
     }
@@ -37,7 +38,7 @@ public class UserSessionClient {
                   new HttpEntity<Void>(headers),
                   AuthenticatedSessionResponse.class)
               .getBody();
-      return response == null || response.userId() <= 0 ? null : response.userId();
+      return response == null || response.userId() <= 0 ? null : response;
     } catch (HttpClientErrorException exception) {
       if (exception.getStatusCode().value() == 401 || exception.getStatusCode().value() == 403) {
         return null;

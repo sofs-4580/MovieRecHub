@@ -27,8 +27,11 @@
                 <div class="badges">
                     <span class="badge" th:text="${list.type()}">CUSTOM</span>
                     <span class="badge" th:text="${list.visibility()}">PUBLIC</span>
-                    <span class="muted small"
-                          th:text="'by user ' + ${list.ownerId()} + ' · ' + ${#lists.size(list.items())} + ' movies'"></span>
+                    <span class="muted small">
+                        by <a class="link" th:if="${userId != null}" th:href="@{/profiles/{id}(id=${list.ownerId()})}" th:text="'user ' + ${list.ownerId()}">user 1</a>
+                        <span th:if="${userId == null}" th:text="'user ' + ${list.ownerId()}">user 1</span>
+                        <span th:text="'· ' + ${#lists.size(list.items())} + ' movies'"></span>
+                    </span>
                 </div>
             </div>
         </div>

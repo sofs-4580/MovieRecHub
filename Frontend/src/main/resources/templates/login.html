@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Sign in — Movie Recommendation Hub</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('')}"></aside>
+
+    <main class="main">
+        <h1 class="page-title">Sign in</h1>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <form th:action="@{/login}" method="post" class="panel stack narrow">
+            <label class="field">
+                <span>Username</span>
+                <input type="text" name="username" class="input" maxlength="30" autocomplete="username"
+                       th:value="${formUsername}" placeholder="your_username" required autofocus/>
+            </label>
+            <label class="field">
+                <span>Password</span>
+                <input type="password" name="password" class="input" maxlength="128"
+                       autocomplete="current-password" required/>
+            </label>
+            <button type="submit" class="btn">Sign in</button>
+        </form>
+        <p class="empty">No account yet? <a th:href="@{/register}">Create one</a>.</p>
+    </main>
+
+</div>
+</body>
+</html>

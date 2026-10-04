@@ -1,7 +1,6 @@
 package psia.movieRecHub.controller;
 
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,25 +19,15 @@ public class MovieWebController {
 
   private final MovieServiceClient movieClient;
   private final CurrentUser currentUser;
-  private final String accountFrontendUrl;
 
-  public MovieWebController(
-      MovieServiceClient movieClient,
-      CurrentUser currentUser,
-      @Value("${account.frontend.url}") String accountFrontendUrl) {
+  public MovieWebController(MovieServiceClient movieClient, CurrentUser currentUser) {
     this.movieClient = movieClient;
     this.currentUser = currentUser;
-    this.accountFrontendUrl = accountFrontendUrl;
   }
 
   @ModelAttribute("genres")
   public MovieGenre[] genres() {
     return MovieGenre.values(); // para preencher o filtro de generos no template
-  }
-
-  @ModelAttribute("userId")
-  public Long userId() {
-    return currentUser.getId();
   }
 
   @GetMapping("/")
@@ -94,6 +83,6 @@ public class MovieWebController {
   }
 
   private String loginRedirect() {
-    return "redirect:" + accountFrontendUrl + "/#login";
+    return "redirect:/login";
   }
 }
