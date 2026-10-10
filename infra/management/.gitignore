@@ -1,0 +1,3 @@
+# Personal settings and credentials are local to each checkout.
+/.env
+/.local/

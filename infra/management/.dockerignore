@@ -1,0 +1,3 @@
+# Never send local settings or credentials as part of the image build context.
+*
+!Dockerfile
