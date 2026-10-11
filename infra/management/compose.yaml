@@ -14,6 +14,7 @@ services:
     environment:
       CLOUDSDK_CORE_PROJECT: ${GCP_PROJECT_ID:?Define GCP_PROJECT_ID no ficheiro local .env}
       CLOUDSDK_CONFIG: /home/cloudsdk/.config/gcloud
+      TF_VAR_project_id: ${GCP_PROJECT_ID:?Define GCP_PROJECT_ID no ficheiro local .env}
     volumes:
       # Relative bind paths are resolved from this Compose file's directory.
       - type: bind

@@ -1,0 +1,17 @@
+# Downloaded providers and local backend configuration.
+/.terraform/
+
+# Personal state, backups and lock files; never share these between installations.
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Plans, crash reports and optional local variable overrides may contain secrets.
+*.tfplan
+*.tfplan.json
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+
+# Keep .terraform.lock.hcl in Git: it locks provider versions, not cloud resources.
