@@ -69,3 +69,27 @@ variable "worker_count" {
     error_message = "The worker count must be a positive integer."
   }
 }
+
+variable "ssh_public_key_path" {
+  description = "Path inside the management container to the public SSH key; its private key has the same path without .pub."
+  type        = string
+  default     = "/home/cloudsdk/.ssh/id_ed25519.pub"
+  nullable    = false
+
+  validation {
+    condition     = endswith(var.ssh_public_key_path, ".pub") && try(length(trimspace(file(pathexpand(var.ssh_public_key_path)))) > 0, false)
+    error_message = "Use an existing, readable, non-empty public SSH key file ending in .pub, with the matching private key next to it. Run ./infra/management/manage.sh ssh-key first."
+  }
+}
+
+variable "worker_data_disk_size_gb" {
+  description = "Shared size of the dedicated data disk attached to worker 1."
+  type        = number
+  default     = 20
+  nullable    = false
+
+  validation {
+    condition     = var.worker_data_disk_size_gb >= 20 && var.worker_data_disk_size_gb == floor(var.worker_data_disk_size_gb)
+    error_message = "Use an integer disk size of at least 20 GB. Shrinking an existing disk requires replacement; review the plan before changing this value."
+  }
+}

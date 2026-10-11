@@ -14,4 +14,7 @@ crash.*.log
 *.tfvars
 *.tfvars.json
 
+# Inventory includes personal IPs and local administrative paths.
+/ansible-inventory.json
+
 # Keep .terraform.lock.hcl in Git: it locks provider versions, not cloud resources.

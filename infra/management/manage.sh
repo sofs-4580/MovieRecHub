@@ -13,6 +13,7 @@ Usage: ./infra/management/manage.sh <command>
   init             Create local settings and a private credentials directory.
   build            Build the tools image for the current user's UID/GID.
   login            Authorize your Google account and generate local credentials.
+  ssh-key          Generate or reuse a personal SSH key in the persistent volume.
   shell [command]  Open the tools shell, or run a command using those credentials.
   check            Verify access to the configured project and ADC authentication.
 
@@ -31,7 +32,7 @@ if [[ $# -gt 0 ]]; then
 fi
 case "${command_name}" in
     help|-h|--help) usage; exit 0 ;;
-    init|build|login|shell|check) ;;
+    init|build|login|ssh-key|shell|check) ;;
     *) usage >&2; fail "Comando desconhecido: ${command_name}" ;;
 esac
 if [[ "${command_name}" != shell && $# -gt 0 ]]; then
@@ -77,6 +78,42 @@ case "${command_name}" in
             gcloud auth application-default set-quota-project "$CLOUDSDK_CORE_PROJECT"
             chmod 0600 "$CLOUDSDK_CONFIG/application_default_credentials.json"
             printf "Credenciais locais preparadas para o projeto %s.\n" "$CLOUDSDK_CORE_PROJECT"
+        '
+        ;;
+    ssh-key)
+        exec "${compose[@]}" run --rm --build management bash -euc '
+            umask 077
+            key_path="/home/cloudsdk/.ssh/id_ed25519"
+            chmod 0700 /home/cloudsdk/.ssh
+            if [[ ! -e "$key_path" ]]; then
+                [[ ! -e "$key_path.pub" ]] || {
+                    printf "Erro: existe uma chave pública sem a privada correspondente.\n" >&2
+                    exit 1
+                }
+                ssh-keygen -q -t ed25519 -N "" -C "g34-$CLOUDSDK_CORE_PROJECT" -f "$key_path"
+            fi
+            [[ -s "$key_path" && -r "$key_path" ]] || {
+                printf "Erro: a chave SSH privada existente não é legível.\n" >&2
+                exit 1
+            }
+            public_key="$(ssh-keygen -y -P "" -f "$key_path")"
+            read -r public_type public_data public_comment <<< "$public_key"
+            [[ "$public_type" == ssh-ed25519 && -n "$public_data" ]] || {
+                printf "Erro: a chave existente não é Ed25519.\n" >&2
+                exit 1
+            }
+            public_key="$public_type $public_data"
+            if [[ -e "$key_path.pub" ]]; then
+                read -r existing_type existing_data existing_comment < "$key_path.pub"
+                [[ "$existing_type $existing_data" == "$public_key" ]] || {
+                    printf "Erro: as chaves SSH pública e privada não correspondem.\n" >&2
+                    exit 1
+                }
+            else
+                printf "%s\n" "$public_key" > "$key_path.pub"
+            fi
+            chmod 0600 "$key_path" "$key_path.pub"
+            printf "Chave SSH local preparada em %s; nenhuma chave existente foi substituída.\n" "$key_path"
         '
         ;;
     shell|check)
