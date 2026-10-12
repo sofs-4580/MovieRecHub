@@ -2,8 +2,8 @@ name: movie-rec-hub
 
 # Default ports (container == host port)
 #   frontend 8080 | user-service 8081 | profile-service 8082
-#   movie-service 8083 | recommendation-service 8084 (see commented block)
-#   DBs on the host: users 5433 | profiles 5434 | movies 5435
+#   movie-service 8083 | recommendation-service 8084
+#   DBs on the host: users 5433 | profiles 5434 | movies 5435 | recommendations 5436
 
 services:
   # ---------------------------------------------------------------- databases
@@ -23,6 +23,12 @@ services:
     extends:
       file: ./MovieService/compose.yaml
       service: movie-db
+    restart: unless-stopped
+
+  reco-db:
+    extends:
+      file: ./RecomendationService/compose.yaml
+      service: reco-db
     restart: unless-stopped
 
   # ----------------------------------------------------------------- services
@@ -73,34 +79,37 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # --- RecommendationService: uncomment once feature/RecommendationService is merged ---
-  # ollama:
-  #   image: ollama/ollama
-  #   volumes:
-  #     - ollama-data:/root/.ollama
-  #   healthcheck:
-  #     test: ["CMD", "ollama", "list"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 10
-  #   restart: unless-stopped
-  #   # first run: docker compose exec ollama ollama pull llama3.2:1b
-  #
-  # recommendation-service:
-  #   build:
-  #     context: ./RecommendationService
-  #   environment:
-  #     MOVIE_SERVICE_URL: http://movie-service:8083
-  #     OLLAMA_URL: http://ollama:11434
-  #     OLLAMA_MODEL: llama3.2:1b
-  #   ports:
-  #     - "127.0.0.1:${RECOMMENDATION_SERVICE_PORT:-8084}:8084"
-  #   depends_on:
-  #     movie-service:
-  #       condition: service_healthy
-  #     ollama:
-  #       condition: service_healthy
-  #   restart: unless-stopped
+  # ----------------------------------------------------- recommendation service
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    # first run: docker compose exec ollama ollama pull hf.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
+
+  recommendation-service:
+    build:
+      context: ./RecomendationService
+    environment:
+      DB_URL: jdbc:postgresql://reco-db:5432/movie_rec_hub_recommendations
+      DB_USERNAME: reco_service
+      DB_PASSWORD: ""
+      MOVIE_SERVICE_URL: http://movie-service:8083
+      OLLAMA_URL: http://ollama:11434
+      LLM_MODEL: hf.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
+    ports:
+      - "127.0.0.1:${RECOMMENDATION_SERVICE_PORT:-8084}:8084"
+    depends_on:
+      reco-db:
+        condition: service_healthy
+      movie-service:
+        condition: service_healthy
+    restart: unless-stopped
 
   # ----------------------------------------------------------------- frontend
   frontend:
@@ -125,4 +134,5 @@ volumes:
   users-db-data:
   profiles-db-data:
   movie-db-data:
-  # ollama-data:
+  reco-db-data:
+  ollama-data:
