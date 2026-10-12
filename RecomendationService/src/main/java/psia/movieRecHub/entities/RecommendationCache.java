@@ -1,4 +1,4 @@
-package psia.movieRecHub.model;
+package psia.movieRecHub.entities;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
