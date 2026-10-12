@@ -16,6 +16,13 @@ public class AppConfig {
     return build(connectMs, readMs);
   }
 
+  @Bean
+  RestTemplate llmRestTemplate(
+      @Value("${llm.connect-timeout-ms}") int connectMs,
+      @Value("${llm.read-timeout-ms}") int readMs) {
+    return build(connectMs, readMs);
+  }
+
   private static RestTemplate build(int connectMs, int readMs) {
     SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
     factory.setConnectTimeout(connectMs);
