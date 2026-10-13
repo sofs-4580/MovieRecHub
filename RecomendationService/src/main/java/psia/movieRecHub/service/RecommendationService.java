@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import psia.movieRecHub.client.OllamaLlmClient;
 import psia.movieRecHub.dto.response.RecommendationResponseItemDto;
 import psia.movieRecHub.dto.response.RecommendationResultDto;
+import psia.movieRecHub.engine.Hash;
 import psia.movieRecHub.engine.LlmAnswer;
 import psia.movieRecHub.engine.LlmPrompts;
 import psia.movieRecHub.engine.MovieDoc;
@@ -24,10 +25,15 @@ public class RecommendationService {
 
   private final CatalogRefreshService catalogue;
   private final OllamaLlmClient llm;
+  private final RecommendationCasheService cacheService;
 
-  public RecommendationService(CatalogRefreshService catalogue, OllamaLlmClient llm) {
+  public RecommendationService(
+      CatalogRefreshService catalogue,
+      OllamaLlmClient llm,
+      RecommendationCasheService cacheService) {
     this.catalogue = catalogue;
     this.llm = llm;
+    this.cacheService = cacheService;
   }
 
   public RecommendationResultDto ask(String text) {
@@ -76,5 +82,11 @@ public class RecommendationService {
 
   private RecommendationResponseItemDto toItem(MovieDoc m, String reason) {
     return new RecommendationResponseItemDto(m.id(), m.title(), m.year(), m.genres(), reason);
+  }
+
+  public RecommendationResultDto refreshFor(Long userId, String prompt) {
+    RecommendationResultDto result = ask(prompt);
+    cacheService.saveRecommendationCache(userId, result, Hash.sha256(prompt));
+    return result;
   }
 }
