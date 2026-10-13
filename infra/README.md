@@ -36,6 +36,14 @@ gcloud auth application-default set-quota-project "$CLOUDSDK_CORE_PROJECT"
 
 O login apresenta um URL para autenticação no browser e guarda também as credenciais usadas pelo Terraform. O segundo comando seleciona o projeto de quota dessas credenciais. Se surgir `invalid_rapt`, repetir o login: a organização pode exigir nova autenticação.
 
+Preparar as APIs necessárias uma vez por projeto:
+
+```bash
+gcloud services enable compute.googleapis.com cloudresourcemanager.googleapis.com --project="$CLOUDSDK_CORE_PROJECT"
+```
+
+Compute Engine permite gerir as VMs; Cloud Resource Manager permite as consultas ao projeto usadas pelo provider Terraform, incluindo durante `destroy`. Se aparecer `SERVICE_DISABLED`, ativar a API indicada, aguardar a propagação e repetir o comando que falhou.
+
 Preparar a chave para entrar nas futuras VMs, apenas se o par ainda não existir:
 
 ```bash
@@ -99,6 +107,36 @@ As versões comuns ficam em `group_vars/all.yml`; utilizador SSH, chave e IPs v�
 
 Podemos repetir `ansible-playbook cluster.yml`: não faz reset do cluster, não junta novamente workers existentes e só cria ext4 num disco sem partições/assinaturas. Não executa upgrades Kubernetes. `--check` não simula uma instalação completa e é recusado; usar `--syntax-check` para a validação local.
 
-Depois de parar/arrancar VMs, os IPs públicos podem mudar: regenerar o inventário. Se mudar o IP do control plane, o certificado da API também precisa de incluir o novo IP; repetir estes playbooks não renova esse certificado. A aplicação e o teste Nginx ainda serão preparados numa etapa seguinte.
+Depois de parar/arrancar VMs, os IPs públicos podem mudar: regenerar o inventário. Se mudar o IP do control plane, o certificado da API também precisa de incluir o novo IP; repetir estes playbooks não renova esse certificado.
+
+### Teste Nginx
+
+O Nginx é um teste temporário **no cluster Google Cloud**, antes do deployment dos nossos serviços. Instala um Pod e expõe a página na porta `30510`. Preparar/analisar os ficheiros localmente não executa esse teste.
+
+Dentro do contentor, em `/workspace/infra/ansible`, validar agora sem VMs:
+
+```bash
+ansible-playbook -i tests/inventory.yml smoke-test.yml --syntax-check
+ansible-playbook -i tests/inventory.yml smoke-test-cleanup.yml --syntax-check
+```
+
+**Quando o cluster real estiver instalado** e o inventário Terraform gerado:
+
+```bash
+ansible-playbook smoke-test.yml
+kubectl -n nginx-smoke-test get pods,svc
+```
+
+O playbook aplica `kubernetes/smoke-test/deployment.yaml`, espera pelo Deployment e verifica HTTP 200 e a página Nginx através do IP público de cada worker, a partir do contentor local. No browser, abrir o URL apresentado: `http://IP_PUBLICO_DO_WORKER:30510/`.
+
+Se faltar `kubectl` ou `/etc/kubernetes/admin.conf` no control plane, o teste termina com uma mensagem para executar `ansible-playbook cluster.yml`. Criar as VMs com Terraform ou obter `pong` por SSH não instala Kubernetes. O playbook do cluster também prepara `~/.kube/config` no contentor; sem essa configuração, o kubectl local pode tentar ligar a `localhost:8080`.
+
+Para remover o teste e libertar a porta antes de instalar o frontend:
+
+```bash
+ansible-playbook smoke-test-cleanup.yml
+```
+
+Remove o namespace dedicado `nginx-smoke-test` e os seus recursos; reservar esse namespace exclusivamente para o teste. Repetir instalação/limpeza é permitido. A limpeza não elimina as VMs nem os discos; os custos dessas máquinas continuam até serem paradas/removidas. A aplicação completa ainda falta instalar.
 
 Para terminar, executar `exit` dentro da shell e depois `just stop` no computador. Credenciais, chaves e kubeconfig persistem nas montagens/volumes; o estado e os planos ficam em `infra/gcp/`. Os ficheiros pessoais são ignorados pelo Git.
