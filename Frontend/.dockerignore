@@ -1,5 +1,5 @@
-node_modules/
-test/
+target/
+.cache/
 .git/
 .env
 .env.*

@@ -1,0 +1,20 @@
+services:
+  movie-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: movie_rec_hub_movies
+      POSTGRES_USER: movie_service
+      # Local development: connections do not require a password.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:${MOVIE_DB_PORT:-5435}:5432"
+    volumes:
+      - movie-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U movie_service -d movie_rec_hub_movies"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  movie-db-data:

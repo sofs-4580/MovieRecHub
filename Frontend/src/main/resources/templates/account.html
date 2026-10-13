@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Account — Movie Recommendation Hub</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('account')}"></aside>
+
+    <main class="main">
+        <h1 class="page-title">Account</h1>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <div class="panel profile-head narrow">
+            <div class="avatar" th:text="${#strings.toUpperCase(#strings.substring(currentUsername, 0, 1))}">U</div>
+            <div>
+                <div class="muted small">Username</div>
+                <strong th:text="${currentUsername}">user</strong>
+            </div>
+        </div>
+
+        <div class="form-row" style="margin-top: 24px">
+            <a class="btn" th:href="@{/account/password}">Change password</a>
+            <a class="btn btn-ghost" th:href="@{/profile}">Edit my profile</a>
+        </div>
+    </main>
+
+</div>
+</body>
+</html>

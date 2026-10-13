@@ -72,4 +72,8 @@ public class Review {
   public Movie getMovie() {
     return movie;
   }
+  
+  public LocalDateTime getCreatedAt() {
+	return createdAt;
+  }
 }

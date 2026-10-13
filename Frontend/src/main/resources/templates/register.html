@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Create account — Movie Recommendation Hub</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('')}"></aside>
+
+    <main class="main">
+        <h1 class="page-title">Create account</h1>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <form th:action="@{/register}" method="post" class="panel stack narrow">
+            <label class="field">
+                <span>Username</span>
+                <input type="text" name="username" class="input" maxlength="30" autocomplete="username"
+                       th:value="${formUsername}" placeholder="your_username" required autofocus/>
+                <small class="muted">3 to 30 characters: lowercase letters, digits and _</small>
+            </label>
+            <label class="field">
+                <span>Password</span>
+                <input type="password" name="password" class="input" minlength="12" maxlength="128"
+                       autocomplete="new-password" required/>
+                <small class="muted">12 to 128 characters</small>
+            </label>
+            <label class="field">
+                <span>Confirm password</span>
+                <input type="password" name="confirmPassword" class="input" minlength="12" maxlength="128"
+                       autocomplete="new-password" required/>
+            </label>
+            <fieldset class="field">
+                <legend>Favourite genres <span class="muted small">(pick at least one)</span></legend>
+                <div th:replace="~{fragments/layout :: genreChips(name=favoriteGenres, selected=${selectedGenres})}"></div>
+            </fieldset>
+            <button type="submit" class="btn">Create account</button>
+        </form>
+        <p class="empty">Already registered? <a th:href="@{/login}">Sign in</a>.</p>
+    </main>
+
+</div>
+</body>
+</html>

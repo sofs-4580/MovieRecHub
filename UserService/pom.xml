@@ -14,8 +14,7 @@
     <groupId>psia.movieRecHub</groupId>
     <artifactId>user-service</artifactId>
     <version>1.0</version>
-    <packaging>jar</packaging>
-    <name>User Service</name>
+    <name>Movie Rec Hub - User Service</name>
     <description>Identity and account service for Movie Recommendation Hub</description>
 
     <properties>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="${list.name()}">List</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('lists')}"></aside>
+
+    <main class="main">
+
+        <a th:href="@{/lists}" class="back">&larr; Back to lists</a>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <div class="hero">
+            <div class="poster cover" th:classappend="'tone-' + ${list.id() % 6}"
+                 th:text="${#strings.substring(list.name(), 0, 1)}">L</div>
+            <div class="hero-info">
+                <div class="hero-kicker">List</div>
+                <h1 class="hero-title" th:text="${list.name()}">Name</h1>
+                <p class="muted" th:text="${list.description()}"></p>
+                <div class="badges">
+                    <span class="badge" th:text="${list.type()}">CUSTOM</span>
+                    <span class="badge" th:text="${list.visibility()}">PUBLIC</span>
+                    <span class="muted small">
+                        by <a class="link" th:if="${userId != null}" th:href="@{/profiles/{id}(id=${list.ownerId()})}" th:text="'user ' + ${list.ownerId()}">user 1</a>
+                        <span th:if="${userId == null}" th:text="'user ' + ${list.ownerId()}">user 1</span>
+                        <span th:text="'· ' + ${#lists.size(list.items())} + ' movies'"></span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="rows" th:if="${not #lists.isEmpty(list.items())}">
+            <div class="row" th:each="i : ${list.items()}">
+                <span class="row-index" th:text="${i.position()}">1</span>
+                <div class="poster row-thumb" th:classappend="'tone-' + ${i.movie().id() % 6}"
+                     th:text="${#strings.substring(i.movie().title(), 0, 1)}">M</div>
+                <div class="row-main">
+                    <a class="row-title" th:text="${i.movie().title()}"
+                       th:href="@{/movies/{id}(id=${i.movie().id()})}">Title</a>
+                    <div class="row-sub"
+                         th:text="${i.movie().releaseYear()} + ' · ' + ${#strings.replace(#strings.toLowerCase(#strings.setJoin(i.movie().genres(), ', ')), '_', '-')}"></div>
+                </div>
+                <form th:if="${isOwner}" th:action="@{/lists/{id}/remove(id=${list.id()})}" method="post">
+                    <input type="hidden" name="movieId" th:value="${i.movie().id()}"/>
+                    <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                </form>
+            </div>
+        </div>
+        <p class="empty" th:if="${#lists.isEmpty(list.items())}">This list is empty.</p>
+
+        <form th:if="${isOwner and list.type().name() == 'CUSTOM'}" style="margin-top: 32px"
+              th:action="@{/lists/{id}/delete(id=${list.id()})}" method="post">
+            <button type="submit" class="btn btn-danger">Delete list</button>
+        </form>
+
+    </main>
+
+</div>
+</body>
+</html>
