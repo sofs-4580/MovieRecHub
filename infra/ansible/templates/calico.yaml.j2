@@ -1,0 +1,16 @@
+{# Preserve the pinned upstream resources, adapting only calico-node networking. #}
+{% for resource in calico_manifest.content | b64decode | from_yaml_all %}
+{% if resource.kind == 'DaemonSet' and resource.metadata.name == 'calico-node' %}
+{% for container in resource.spec.template.spec.containers if container.name == 'calico-node' %}
+{% for variable in container.env if variable.name == 'CALICO_IPV4POOL_IPIP' %}
+{% set _ = variable.update({'value': calico_ipip_mode}) %}
+{% endfor %}
+{% set _ = container.env.extend([
+  {'name': 'CALICO_IPV4POOL_CIDR', 'value': kubernetes_pod_cidr},
+  {'name': 'IP_AUTODETECTION_METHOD', 'value': 'kubernetes-internal-ip'}
+]) %}
+{% endfor %}
+{% endif %}
+---
+{{ resource | to_nice_yaml(indent=2, width=160) }}
+{% endfor %}

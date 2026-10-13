@@ -1,0 +1,10 @@
+---
+# Run from infra/ansible, after Terraform has generated the inventory.
+- name: Prepare the Ubuntu nodes
+  ansible.builtin.import_playbook: configure-nodes.yml
+
+- name: Initialize the control plane and Calico
+  ansible.builtin.import_playbook: create-cluster.yml
+
+- name: Join workers and verify the cluster
+  ansible.builtin.import_playbook: join-workers.yml

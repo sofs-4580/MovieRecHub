@@ -1,0 +1,9 @@
+---
+# Shared versions; project ID, credentials and node IPs come from Terraform.
+kubernetes_version: "1.35.9"
+kubernetes_package_version: "1.35.9-1.1"
+kubernetes_minor_version: "1.35"
+calico_version: "3.31.4"
+calico_manifest_sha256: "6e89ee080d6dae58c620c47e3fcb7a9bfc40748422c868c924b7482dd5145ce2"
+containerd_socket: "unix:///run/containerd/containerd.sock"
+kubernetes_pause_image: "registry.k8s.io/pause:3.10.1"

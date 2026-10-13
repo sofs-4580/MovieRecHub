@@ -1,0 +1,161 @@
+---
+- name: Prepare Ubuntu for Kubernetes
+  hosts: control_plane:workers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Validate the inventory before contacting nodes
+      ansible.builtin.assert:
+        that:
+          - groups.get('control_plane', []) | length == 1
+          - groups.get('workers', []) | length >= 1
+          - ansible_host is defined
+          - kubernetes_node_ip is defined
+          - kubernetes_pod_cidr is defined
+          - kubernetes_service_cidr is defined
+          - calico_ipip_mode == 'Always'
+          - not ansible_check_mode
+        fail_msg: "Use the Terraform inventory and run normally. --check is not a full cluster simulation; use --syntax-check locally."
+    - name: Wait for SSH and Python
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+    - name: Gather node facts
+      ansible.builtin.setup:
+    - name: Check the supported VM image
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == 'Ubuntu'
+          - ansible_facts.distribution_version == '22.04'
+        fail_msg: "These playbooks target the Ubuntu 22.04 image declared in Terraform."
+    - name: Wait for cloud-init to finish apt and SSH setup
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+    - name: Check whether the node already belongs to a cluster
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: existing_kubelet
+    - name: Read the installed kubeadm version on an existing node
+      ansible.builtin.command: kubeadm version -o short
+      register: existing_version
+      changed_when: false
+      when: existing_kubelet.stat.exists
+    - name: Prevent an implicit upgrade of an existing cluster
+      ansible.builtin.assert:
+        that: existing_version.stdout == 'v' ~ kubernetes_version
+        fail_msg: "Existing Kubernetes version differs. Cluster upgrades require a separate kubeadm upgrade procedure."
+      when: existing_kubelet.stat.exists
+  tasks:
+    - name: Install operating system dependencies and containerd
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, gpg, containerd, util-linux, e2fsprogs]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+        lock_timeout: 300
+    - name: Persist kernel modules for container networking
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/kubernetes.conf
+        content: "overlay\nbr_netfilter\n"
+        mode: "0644"
+    - name: Load the kernel modules now
+      ansible.builtin.command:
+        argv: [modprobe, "{{ item }}"]
+      loop: [overlay, br_netfilter]
+      changed_when: false
+    - name: Persist forwarding and bridge settings
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-kubernetes.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+        mode: "0644"
+      notify: Apply sysctl
+    - name: Disable active swap
+      ansible.builtin.command: swapoff -a
+      when: ansible_facts.swaptotal_mb | int > 0
+    - name: Disable swap on subsequent boots
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^(?!#)(\S+\s+\S+\s+swap\s+.*)$'
+        replace: '# \1'
+    - name: Create configuration directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: [/etc/containerd, /etc/apt/keyrings]
+    - name: Generate containerd defaults without overwriting the active configuration
+      ansible.builtin.command: containerd config default
+      register: containerd_defaults
+      changed_when: false
+    - name: Configure containerd with the systemd cgroup driver
+      ansible.builtin.copy:
+        dest: /etc/containerd/config.toml
+        content: >-
+          {{ containerd_defaults.stdout |
+             replace('SystemdCgroup = false', 'SystemdCgroup = true') |
+             regex_replace('sandbox_image = "[^"]+"', 'sandbox_image = "' ~ kubernetes_pause_image ~ '"') }}
+        mode: "0644"
+      notify: Restart containerd
+    - name: Enable containerd on boot
+      ansible.builtin.systemd_service:
+        name: containerd
+        enabled: true
+        state: started
+    - name: Download the Kubernetes repository signing key
+      ansible.builtin.get_url:
+        url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_minor_version }}/deb/Release.key"
+        dest: /etc/apt/keyrings/kubernetes.asc
+        mode: "0644"
+    - name: Configure the versioned Kubernetes package repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/kubernetes.list
+        content: "deb [signed-by=/etc/apt/keyrings/kubernetes.asc] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_minor_version }}/deb/ /\n"
+        mode: "0644"
+      register: kubernetes_repository
+    - name: Refresh apt after adding the repository
+      ansible.builtin.apt:
+        update_cache: true
+        lock_timeout: 300
+      when: kubernetes_repository.changed
+    - name: Install the same Kubernetes patch version on every node
+      ansible.builtin.apt:
+        name:
+          - "kubelet={{ kubernetes_package_version }}"
+          - "kubeadm={{ kubernetes_package_version }}"
+          - "kubectl={{ kubernetes_package_version }}"
+        state: present
+        lock_timeout: 300
+    - name: Hold Kubernetes packages against automatic upgrades
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop: [kubelet, kubeadm, kubectl]
+    - name: Set the private node IP explicitly
+      ansible.builtin.copy:
+        dest: /etc/default/kubelet
+        content: "KUBELET_EXTRA_ARGS=--node-ip={{ kubernetes_node_ip }}\n"
+        mode: "0644"
+      notify: Restart kubelet
+    - name: Enable kubelet on boot
+      ansible.builtin.systemd_service:
+        name: kubelet
+        enabled: true
+    - name: Prepare the dedicated disk only on the designated worker
+      ansible.builtin.include_tasks: tasks/data-disk.yml
+      when: kubernetes_data_device is defined
+    - name: Apply runtime and networking changes before kubeadm
+      ansible.builtin.meta: flush_handlers
+  handlers:
+    - name: Apply sysctl
+      ansible.builtin.command: sysctl --system
+    - name: Restart containerd
+      ansible.builtin.systemd_service:
+        name: containerd
+        state: restarted
+    - name: Restart kubelet
+      ansible.builtin.systemd_service:
+        name: kubelet
+        state: restarted

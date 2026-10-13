@@ -1,0 +1,23 @@
+---
+# Documentation-only IPs. Use for --syntax-check/--list-tasks, never deployment.
+all:
+  vars:
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: /home/cloudsdk/.ssh/id_ed25519
+    ansible_python_interpreter: /usr/bin/python3
+    kubernetes_pod_cidr: 10.32.0.0/16
+    kubernetes_service_cidr: 10.96.0.0/12
+    calico_ipip_mode: Always
+  children:
+    control_plane:
+      hosts:
+        psia-g34-control-plane:
+          ansible_host: 192.0.2.10
+          kubernetes_node_ip: 10.164.0.10
+    workers:
+      hosts:
+        psia-g34-worker-1:
+          ansible_host: 192.0.2.11
+          kubernetes_node_ip: 10.164.0.11
+          kubernetes_data_device: /dev/disk/by-id/google-kubernetes-data
+          kubernetes_data_path: /var/lib/kubernetes-data

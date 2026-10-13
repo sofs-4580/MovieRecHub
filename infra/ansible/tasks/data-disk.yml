@@ -1,0 +1,73 @@
+---
+- name: Wait for the dedicated data disk
+  ansible.builtin.wait_for:
+    path: "{{ kubernetes_data_device }}"
+    timeout: 120
+- name: Read disk type, partitions, filesystem and mountpoints
+  ansible.builtin.command:
+    argv: [lsblk, --json, --output, 'TYPE,FSTYPE,MOUNTPOINTS', "{{ kubernetes_data_device }}"]
+  register: data_disk
+  changed_when: false
+- name: Read filesystem and partition signatures without changing the disk
+  ansible.builtin.command:
+    argv: [wipefs, --no-act, --json, "{{ kubernetes_data_device }}"]
+  register: data_signatures
+  changed_when: false
+- name: Accept only a blank whole disk or an existing ext4 filesystem
+  ansible.builtin.assert:
+    that:
+      - (data_disk.stdout | from_json).blockdevices | length == 1
+      - (data_disk.stdout | from_json).blockdevices[0].type == 'disk'
+      - (data_disk.stdout | from_json).blockdevices[0].get('children', []) | length == 0
+      - >-
+        (data_disk.stdout | from_json).blockdevices[0].fstype == 'ext4' or
+        ((data_disk.stdout | from_json).blockdevices[0].fstype == none and
+         (data_signatures.stdout | from_json).signatures | length == 0)
+      - >-
+        (data_disk.stdout | from_json).blockdevices[0].mountpoints |
+        reject('equalto', none) | difference([kubernetes_data_path]) | length == 0
+    fail_msg: "Refusing to format a partitioned, mounted elsewhere or non-empty/non-ext4 disk. Inspect it manually."
+- name: Create ext4 only on a disk with no signatures
+  ansible.builtin.command:
+    argv: [mkfs.ext4, "{{ kubernetes_data_device }}"]
+  when: (data_disk.stdout | from_json).blockdevices[0].fstype == none
+- name: Read the filesystem UUID
+  ansible.builtin.command:
+    argv: [blkid, -s, UUID, -o, value, "{{ kubernetes_data_device }}"]
+  register: data_uuid
+  changed_when: false
+- name: Check whether the target directory is already a mountpoint
+  ansible.builtin.command:
+    argv: [findmnt, --noheadings, --raw, --mountpoint, "{{ kubernetes_data_path }}", --output, UUID]
+  register: data_mount
+  changed_when: false
+  failed_when: data_mount.rc not in [0, 1]
+- name: Reject a different filesystem at the target path
+  ansible.builtin.assert:
+    that: data_mount.rc == 1 or data_mount.stdout == data_uuid.stdout
+    fail_msg: "Another filesystem is already mounted at the data path."
+- name: Create the mount directory
+  ansible.builtin.file:
+    path: "{{ kubernetes_data_path }}"
+    state: directory
+    mode: "0755"
+- name: Check for files that would be hidden by a new mount
+  ansible.builtin.command:
+    argv: [find, "{{ kubernetes_data_path }}", -mindepth, '1', -maxdepth, '1', -print, -quit]
+  register: data_directory
+  changed_when: false
+  when: data_mount.rc == 1
+- name: Require an empty directory before mounting
+  ansible.builtin.assert:
+    that: data_directory.stdout | length == 0
+    fail_msg: "The data path already contains files on the boot disk; migrate them before mounting the data disk."
+  when: data_mount.rc == 1
+- name: Persist the mount using the filesystem UUID
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^\S+\s+{{ kubernetes_data_path | regex_escape }}\s+'
+    line: "UUID={{ data_uuid.stdout }} {{ kubernetes_data_path }} ext4 defaults 0 2"
+- name: Mount the disk without reformatting existing data
+  ansible.builtin.command:
+    argv: [mount, "{{ kubernetes_data_path }}"]
+  when: data_mount.rc == 1

@@ -62,4 +62,43 @@ cd /workspace/infra/gcp
 
 O plano pressupõe a API Compute Engine ativa, a rede/sub-rede `default` existente e as regras `default-allow-ssh` e `default-allow-internal` a permitir o acesso necessário.
 
+### Ansible — configurar Kubernetes
+
+Podemos validar os playbooks **antes de criar VMs**, sem login Google:
+
+```bash
+cd /workspace/infra/ansible
+ansible-playbook -i tests/inventory.yml cluster.yml --syntax-check
+/opt/ansible/bin/python3 tests/check-guards.py
+```
+
+O inventário de teste contém IPs fictícios e serve apenas para verificações locais. O teste Python verifica as proteções do disco, inicialização parcial e alterações de versão; não formata discos nem liga a máquinas.
+
+**Quando decidirmos criar a infraestrutura**, depois de aplicar um plano Terraform revisto:
+
+```bash
+cd /workspace/infra/gcp
+umask 077
+terraform output -json ansible_inventory > ansible-inventory.json
+cd /workspace/infra/ansible
+ansible-inventory --graph
+ansible all -m ansible.builtin.ping
+ansible-playbook cluster.yml
+kubectl get nodes -o wide
+kubectl get pods -n kube-system
+```
+
+| Ficheiro | O que faz |
+|---|---|
+| `cluster.yml` | Executa a preparação, criação do cluster e adesão dos workers pela ordem correta. |
+| `configure-nodes.yml` | Instala containerd/Kubernetes, configura rede Linux/swap e monta o disco de dados do primeiro worker. |
+| `create-cluster.yml` | Inicializa o control plane com kubeadm, instala Calico e guarda o kubeconfig local. |
+| `join-workers.yml` | Junta workers novos e verifica nós `Ready`, Calico, CoreDNS e acesso local à API. |
+
+As versões comuns ficam em `group_vars/all.yml`; utilizador SSH, chave e IPs vêm do inventário Terraform. A primeira ligação SSH aceita a chave da VM; uma chave diferente numa ligação posterior é rejeitada. O kubeconfig administrativo fica em `~/.kube/config` no volume pessoal do contentor.
+
+Podemos repetir `ansible-playbook cluster.yml`: não faz reset do cluster, não junta novamente workers existentes e só cria ext4 num disco sem partições/assinaturas. Não executa upgrades Kubernetes. `--check` não simula uma instalação completa e é recusado; usar `--syntax-check` para a validação local.
+
+Depois de parar/arrancar VMs, os IPs públicos podem mudar: regenerar o inventário. Se mudar o IP do control plane, o certificado da API também precisa de incluir o novo IP; repetir estes playbooks não renova esse certificado. A aplicação e o teste Nginx ainda serão preparados numa etapa seguinte.
+
 Para terminar, executar `exit` dentro da shell e depois `just stop` no computador. Credenciais, chaves e kubeconfig persistem nas montagens/volumes; o estado e os planos ficam em `infra/gcp/`. Os ficheiros pessoais são ignorados pelo Git.

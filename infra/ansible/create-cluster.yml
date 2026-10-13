@@ -1,0 +1,105 @@
+---
+- name: Initialize one control plane and install the Pod network
+  hosts: control_plane
+  become: true
+  any_errors_fatal: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Inspect control plane initialization
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: [/etc/kubernetes/admin.conf, /etc/kubernetes/manifests/kube-apiserver.yaml, /var/lib/etcd/member]
+      register: control_plane_state
+    - name: Refuse a partially initialized control plane
+      ansible.builtin.assert:
+        that: >-
+          (control_plane_state.results | selectattr('stat.exists') | list | length) in [0, 3]
+        fail_msg: "Partial kubeadm state detected. Inspect the VM; the installation never runs kubeadm reset automatically."
+    - name: Write kubeadm configuration with private networking and public certificate SAN
+      ansible.builtin.template:
+        src: templates/kubeadm.yaml.j2
+        dest: /etc/kubernetes-bootstrap.yaml
+        mode: "0600"
+    - name: Initialize the control plane only once
+      ansible.builtin.command: kubeadm init --config /etc/kubernetes-bootstrap.yaml
+      args:
+        creates: /etc/kubernetes/admin.conf
+    - name: Wait for the Kubernetes API
+      ansible.builtin.command: kubectl get --raw=/readyz
+      register: api_ready
+      until: api_ready.rc == 0
+      retries: 30
+      delay: 10
+      changed_when: false
+    - name: Read the existing cluster configuration
+      ansible.builtin.command: kubectl -n kube-system get configmap kubeadm-config -o json
+      register: cluster_configuration
+      changed_when: false
+    - name: Reject configuration changes that need a migration or upgrade
+      ansible.builtin.assert:
+        that:
+          - existing.networking.podSubnet == kubernetes_pod_cidr
+          - existing.networking.serviceSubnet == kubernetes_service_cidr
+          - existing.kubernetesVersion == 'v' ~ kubernetes_version
+          - existing.controlPlaneEndpoint == kubernetes_node_ip ~ ':6443'
+        fail_msg: "Existing cluster configuration differs; rerunning installation is not an upgrade or network migration."
+      vars:
+        existing: "{{ (cluster_configuration.stdout | from_json).data.ClusterConfiguration | from_yaml }}"
+    - name: Download and verify the pinned Calico manifest
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/projectcalico/calico/v{{ calico_version }}/manifests/calico.yaml"
+        dest: /etc/calico-upstream.yaml
+        checksum: "sha256:{{ calico_manifest_sha256 }}"
+        mode: "0644"
+    - name: Read upstream Calico resources for rendering
+      ansible.builtin.slurp:
+        src: /etc/calico-upstream.yaml
+      register: calico_manifest
+    - name: Render Calico with the Terraform Pod CIDR and private node addresses
+      ansible.builtin.template:
+        src: templates/calico.yaml.j2
+        dest: /etc/calico.yaml
+        mode: "0644"
+      diff: false
+    - name: Check whether the desired Calico resources differ
+      ansible.builtin.command: kubectl diff --server-side --field-manager=psia-ansible -f /etc/calico.yaml
+      register: calico_diff
+      changed_when: false
+      failed_when: calico_diff.rc not in [0, 1]
+    - name: Apply the Pod network declaratively when needed
+      ansible.builtin.command: kubectl apply --server-side --field-manager=psia-ansible -f /etc/calico.yaml
+      when: calico_diff.rc == 1
+    - name: Check which workers still need to join
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['workers'] }}"
+      register: worker_states
+    - name: Generate a short-lived join command only when needed
+      ansible.builtin.command: kubeadm token create --ttl 15m --print-join-command
+      register: worker_join
+      when: worker_states.results | rejectattr('stat.exists') | list | length > 0
+      no_log: true
+    - name: Create the local kubeconfig directory
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/.kube"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+    - name: Copy the administrator kubeconfig to the management container
+      ansible.builtin.fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: "{{ lookup('env', 'HOME') }}/.kube/config"
+        flat: true
+      no_log: true
+    - name: Use the public API address from the management container
+      ansible.builtin.lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/.kube/config"
+        regexp: '^\s+server:'
+        line: "    server: https://{{ ansible_host }}:6443"
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      no_log: true

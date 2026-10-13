@@ -1,0 +1,56 @@
+---
+- name: Join only workers that have not been initialized
+  hosts: workers
+  become: true
+  any_errors_fatal: true
+  tasks:
+    - name: Inspect the worker kubeconfig
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: worker_configuration
+    - name: Join the worker using the temporary command held in memory
+      ansible.builtin.command:
+        argv: "{{ (hostvars[groups['control_plane'][0]].worker_join.stdout | split) + ['--cri-socket', containerd_socket, '--node-name', inventory_hostname] }}"
+        creates: /etc/kubernetes/kubelet.conf
+      when: not worker_configuration.stat.exists
+      no_log: true
+    - name: Read the worker's cluster address
+      ansible.builtin.slurp:
+        src: /etc/kubernetes/kubelet.conf
+      register: worker_kubeconfig
+      no_log: true
+    - name: Check that an existing worker belongs to this control plane
+      ansible.builtin.assert:
+        that: >-
+          (worker_kubeconfig.content | b64decode | from_yaml).clusters[0].cluster.server ==
+          'https://' ~ hostvars[groups['control_plane'][0]].kubernetes_node_ip ~ ':6443'
+        fail_msg: "Worker belongs to a different API endpoint. Inspect it; no automatic reset is performed."
+
+- name: Verify node and system Pod readiness
+  hosts: control_plane
+  become: true
+  any_errors_fatal: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Wait for each expected node to be Ready
+      ansible.builtin.command:
+        argv: [kubectl, wait, --for=condition=Ready, "node/{{ item }}", --timeout=300s]
+      loop: "{{ groups['control_plane'] + groups['workers'] }}"
+      changed_when: false
+    - name: Wait for Calico and CoreDNS rollouts
+      ansible.builtin.command:
+        argv: [kubectl, -n, kube-system, rollout, status, "{{ item }}", --timeout=300s]
+      loop: [daemonset/calico-node, deployment/calico-kube-controllers, deployment/coredns]
+      changed_when: false
+    - name: Verify kubectl access from the management container
+      ansible.builtin.command: kubectl get nodes -o wide
+      delegate_to: localhost
+      become: false
+      environment:
+        KUBECONFIG: "{{ lookup('env', 'HOME') }}/.kube/config"
+      register: cluster_nodes
+      changed_when: false
+    - name: Show the ready cluster nodes
+      ansible.builtin.debug:
+        var: cluster_nodes.stdout_lines
