@@ -7,9 +7,9 @@
     get_attributes: false
   loop: [/usr/bin/kubectl, /etc/kubernetes/admin.conf]
   register: cluster_prerequisites
-- name: Require the Kubernetes installation before applying or deleting the test
+- name: Require the Kubernetes installation before managing workloads
   ansible.builtin.assert:
     that: cluster_prerequisites.results | selectattr('stat.exists') | list | length == 2
     fail_msg: >-
       The control plane is not prepared: kubectl or /etc/kubernetes/admin.conf is missing.
-      Run ansible-playbook cluster.yml and resolve any errors before running the Nginx test or cleanup.
+      Run ansible-playbook cluster.yml and resolve any errors before deploying workloads or running cleanup.

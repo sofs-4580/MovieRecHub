@@ -1,0 +1,29 @@
+{# Node and mount path come from the Terraform inventory, not personal IPs. #}
+{% for database in ['users-db', 'profiles-db', 'movie-db'] %}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ database }}-data
+spec:
+  capacity:
+    storage: 4Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: movie-rec-local
+  claimRef:
+    namespace: movie-rec-hub
+    name: {{ database }}-data
+  local:
+    path: {{ hostvars[database_data_worker].kubernetes_data_path }}/{{ database }}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{ database_data_worker }}
+{% endfor %}

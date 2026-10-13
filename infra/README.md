@@ -4,7 +4,7 @@ Ambiente local com gcloud, Terraform, Ansible e kubectl para preparar o deployme
 
 ## No computador
 
-Requer Docker com Compose, Bash e `just`. No WSL, o Docker Desktop deve estar aberto e ter a integração com a distribuição ativa.
+Requer Docker com Compose, Bash e `just`. A publicação usa `docker push --platform` (Docker Engine API 1.46+, disponível no Docker 27+). No WSL, o Docker Desktop deve estar aberto e ter a integração com a distribuição ativa.
 
 Na raiz de `g34/`, preparar uma vez:
 
@@ -139,4 +139,82 @@ ansible-playbook smoke-test-cleanup.yml
 
 Remove o namespace dedicado `nginx-smoke-test` e os seus recursos; reservar esse namespace exclusivamente para o teste. Repetir instalação/limpeza é permitido. A limpeza não elimina as VMs nem os discos; os custos dessas máquinas continuam até serem paradas/removidas. A aplicação completa ainda falta instalar.
 
-Para terminar, executar `exit` dentro da shell e depois `just stop` no computador. Credenciais, chaves e kubeconfig persistem nas montagens/volumes; o estado e os planos ficam em `infra/gcp/`. Os ficheiros pessoais são ignorados pelo Git.
+### Bases de dados da aplicação
+
+Esta etapa instala apenas PostgreSQL para UserService, ProfileService e MovieService, em `movie-rec-hub`. Mantém `trust`, sem passwords, e Services internos na porta `5432`. RecommendationService e Ollama ficam para depois.
+
+Validar localmente no contentor, sem VMs:
+
+```bash
+cd /workspace/infra/ansible
+ansible-playbook -i tests/inventory.yml databases.yml --syntax-check
+/opt/ansible/bin/python3 tests/check-databases.py
+```
+
+Quando as VMs e o cluster estiverem instalados, com inventário Terraform atualizado:
+
+```bash
+ansible-playbook databases.yml
+kubectl -n movie-rec-hub get pods,svc,pvc
+kubectl get pv
+```
+
+O playbook verifica que o disco está montado, cria três diretórios, aplica os manifests de `kubernetes/` e espera pelos Pods/PVCs. No final verifica ligações SQL pelos nomes internos `users-db`, `profiles-db` e `movie-db`, sem password. As tabelas da aplicação serão geridas pelos serviços quando estes arrancarem: Flyway em User/Profile e Hibernate na configuração atual de Movie.
+
+Cada BD tem uma réplica, um PVC de `4Gi` e um PV local com `Retain`, associado ao worker do disco de dados. O Service `*-headless` fornece identidade ao StatefulSet; o Service com o nome da BD é o endereço interno usado pela aplicação. Os `4Gi` são capacidade declarada, sem quota individual no filesystem partilhado.
+
+Reaplicar o playbook preserva os dados. Substituir um Pod reutiliza o seu PVC. Não eliminar o namespace/PVCs para reiniciar as BDs: um PV retido pode ficar `Released` e exigir recuperação manual. `terraform destroy` elimina também o disco de dados; PV/PVC não são backups nem tornam as BDs independentes desse worker. O disco deve permanecer montado durante a execução.
+
+### Imagens e Artifact Registry
+
+Construímos frontend, UserService, ProfileService e MovieService com os seus Dockerfiles. `infra/images/compose.yaml` serve para build/push; não executar `up` nesse ficheiro. As imagens são `linux/amd64`, como as VMs `e2`. RecommendationService/Ollama ficam adiados.
+
+No contentor de gestão, preparar o registry privado do projeto pessoal, sem criar VMs:
+
+```bash
+cd /workspace/infra/registry
+terraform init
+terraform validate
+terraform test
+terraform plan -out=registry.tfplan
+terraform apply registry.tfplan
+terraform output image_prefix
+```
+
+Rever o plano antes de aplicar. Declara apenas a API Artifact Registry e um repositório Docker `psia-g34`, em `europe-west4`, com tags imutáveis e scanning desativado. A configuração é comum; o Project ID e o estado são pessoais. O estado separado conserva as imagens quando fazemos `destroy` em `infra/gcp/`.
+
+No terminal **do computador**, na raiz de `g34/`:
+
+```bash
+export IMAGE_TAG=step3-20261013-1  # Exemplo: escolher uma versão NOVA para outro build.
+just images-build
+just images-login
+just images-push
+just images-pull
+```
+
+| Comando | Para que serve |
+|---|---|
+| `images-build` | Compila/empacota as quatro aplicações e atribui o endereço/tag final; não precisa de login nem de registry existente. |
+| `images-login` | Usa o gcloud do contentor já iniciado para autenticar o Docker do computador com um token temporário enviado por stdin. |
+| `images-push` | Obtém os quatro endereços do Compose e publica os manifests amd64; não faz build nem inicia aplicações. |
+| `images-pull` | Confirma que essa versão pode ser descarregada do registry. |
+
+O prefixo é `europe-west4-docker.pkg.dev/PROJECT_ID/psia-g34`; os nomes são `frontend`, `user-service`, `profile-service` e `movie-service`. Não usar `latest`: outra construção deve ter outra tag, pois a versão publicada não pode ser substituída por outro conteúdo. O build inclui o `pom.xml`/`src` atuais; fazer commit e usar uma tag identificável ao preparar uma entrega. Os Dockerfiles atuais saltam os testes Maven; compilar não substitui testes funcionais.
+
+O push usa explicitamente `--platform linux/amd64`: publica a imagem para as VMs, sem índice de outras plataformas/attestations. No Docker Desktop deste ensaio, o push normal tentou associar manifests diferentes à mesma tag imutável e falhou; esta opção resolveu o problema mantendo a imutabilidade. [Opção oficial Docker](https://docs.docker.com/reference/cli/docker/image/push/).
+
+`images-login` exige `just start` e login Google válido. Se surgir `invalid_rapt`, repetir o login em `just mgmt`. O token dura cerca de uma hora; renovar o login Docker quando necessário. A configuração Docker fica em `infra/management/.local/docker/`, privada e ignorada pelo Git; o socket Docker não é montado no contentor. [Autenticação oficial](https://docs.cloud.google.com/artifact-registry/docs/docker/authentication).
+
+O registry privado exige autenticação também no futuro cluster kubeadm/containerd: login Docker no computador **não autentica os nós**. Esse acesso e os Deployments serão configurados na etapa da aplicação. Não criar chaves JSON de service accounts nem tornar imagens públicas para contornar a autenticação.
+
+Para listar imagens/digests, dentro de `just mgmt`:
+
+```bash
+gcloud artifacts docker images list \
+  "europe-west4-docker.pkg.dev/$CLOUDSDK_CORE_PROJECT/psia-g34" --include-tags
+```
+
+Guardar imagens pode ter custo de armazenamento; descarregá-las para o computador pode ter custo de tráfego. O registry permanece depois de parar ferramentas ou destruir VMs. Não há limpeza automática de versões. `terraform destroy` **em `infra/registry/`** elimina o registry e as suas imagens; é uma limpeza independente e destrutiva. [Preços oficiais](https://cloud.google.com/artifact-registry/pricing).
+
+Para terminar, executar `exit` dentro da shell e depois `just stop` no computador. Credenciais, chaves e kubeconfig persistem nas montagens/volumes; estado/planos ficam em `infra/gcp/` e `infra/registry/`. Os ficheiros pessoais são ignorados pelo Git.

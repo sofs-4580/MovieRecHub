@@ -1,0 +1,146 @@
+---
+- name: Prepare database directories on the worker with the mounted data disk
+  hosts: workers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Validate the inventory before preparing database directories
+      ansible.builtin.assert:
+        that:
+          - groups.get('control_plane', []) | length == 1
+          - >-
+            groups.get('workers', []) | map('extract', hostvars) |
+            selectattr('kubernetes_data_device', 'defined') | list | length == 1
+          - not ansible_check_mode
+        fail_msg: "Use the Terraform inventory with exactly one data worker; --syntax-check is the local validation mode."
+  tasks:
+    - name: Prepare storage only on the worker designated by Terraform
+      when: kubernetes_data_device is defined
+      block:
+        - name: Require a real installation and a configured mount path
+          ansible.builtin.assert:
+            that:
+              - not ansible_check_mode
+              - kubernetes_data_path is defined
+            fail_msg: "Run cluster.yml first. Use --syntax-check for local validation."
+        - name: Read the filesystem UUID mounted at the data path
+          ansible.builtin.command:
+            argv: [findmnt, --noheadings, --raw, --mountpoint, "{{ kubernetes_data_path }}", --output, UUID]
+          register: database_mount
+          changed_when: false
+          failed_when: false
+        - name: Read the dedicated disk UUID
+          ansible.builtin.command:
+            argv: [blkid, -s, UUID, -o, value, "{{ kubernetes_data_device }}"]
+          register: database_disk
+          changed_when: false
+          failed_when: false
+        - name: Refuse database directories on an unmounted or different disk
+          ansible.builtin.assert:
+            that:
+              - database_mount.rc == 0
+              - database_disk.rc == 0
+              - database_disk.stdout | length > 0
+              - database_mount.stdout == database_disk.stdout
+            fail_msg: "Data disk is not mounted correctly. Run cluster.yml; do not write database data to the boot disk."
+        - name: Create a separate directory for each database
+          ansible.builtin.file:
+            path: "{{ kubernetes_data_path }}/{{ item }}"
+            state: directory
+            mode: "0755"
+          loop: [users-db, profiles-db, movie-db]
+
+- name: Install and verify the three PostgreSQL databases
+  hosts: control_plane
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Find workers with a dedicated data disk in the Terraform inventory
+      ansible.builtin.set_fact:
+        database_data_workers: >-
+          {{ groups.get('workers', []) | map('extract', hostvars) |
+             selectattr('kubernetes_data_device', 'defined') |
+             map(attribute='inventory_hostname') | list }}
+    - name: Require one control plane and one data worker
+      ansible.builtin.assert:
+        that:
+          - groups.get('control_plane', []) | length == 1
+          - database_data_workers | length == 1
+          - not ansible_check_mode
+        fail_msg: "Use the Terraform inventory with exactly one dedicated data worker and run cluster.yml first."
+    - name: Select the data worker
+      ansible.builtin.set_fact:
+        database_data_worker: "{{ database_data_workers[0] }}"
+    - name: Verify the control plane installation
+      ansible.builtin.include_tasks: tasks/check-cluster.yml
+    - name: Wait for the data worker to be Ready
+      ansible.builtin.command:
+        argv: [kubectl, wait, --for=condition=Ready, "node/{{ database_data_worker }}", --timeout=300s]
+      changed_when: false
+    - name: Copy namespace, storage class and database manifests
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../kubernetes/{{ item }}"
+        dest: "/home/ubuntu/{{ item | basename }}"
+        mode: "0644"
+      loop:
+        - namespace.yaml
+        - storage/storage-class.yaml
+        - databases/users-db.yaml
+        - databases/profiles-db.yaml
+        - databases/movie-db.yaml
+    - name: Render local volumes with the data worker's identity and mount path
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../kubernetes/storage/local-volumes.yaml.j2"
+        dest: /home/ubuntu/local-volumes.yaml
+        mode: "0644"
+    - name: Apply namespace and storage resources in order
+      ansible.builtin.command:
+        argv: [kubectl, apply, -f, "/home/ubuntu/{{ item }}"]
+      loop: [namespace.yaml, storage-class.yaml, local-volumes.yaml]
+      register: database_storage_apply
+      changed_when: "' created' in database_storage_apply.stdout or ' configured' in database_storage_apply.stdout"
+    - name: Apply claims, Services and StatefulSets
+      ansible.builtin.command:
+        argv: [kubectl, apply, -f, "/home/ubuntu/{{ item }}.yaml"]
+      loop: [users-db, profiles-db, movie-db]
+      register: databases_apply
+      changed_when: "' created' in databases_apply.stdout or ' configured' in databases_apply.stdout"
+    - name: Wait for the database Pods to be Ready
+      ansible.builtin.command:
+        argv: [kubectl, -n, movie-rec-hub, rollout, status, "statefulset/{{ item }}", --timeout=300s]
+      loop: [users-db, profiles-db, movie-db]
+      changed_when: false
+    - name: Verify that all claims are Bound
+      ansible.builtin.command:
+        argv: [kubectl, -n, movie-rec-hub, wait, "--for=jsonpath={.status.phase}=Bound", "pvc/{{ item }}-data", --timeout=120s]
+      loop: [users-db, profiles-db, movie-db]
+      changed_when: false
+    - name: Verify SQL through each internal Service without a password
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - -n
+          - movie-rec-hub
+          - exec
+          - "{{ item }}-0"
+          - --
+          - /bin/sh
+          - -ec
+          - 'PGCONNECT_TIMEOUT=5 psql -X -w -h "{{ item }}" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT current_database();"'
+      loop: [users-db, profiles-db, movie-db]
+      register: database_sql
+      until: database_sql.rc == 0
+      retries: 12
+      delay: 5
+      changed_when: false
+    - name: Show Pods, internal Services and claims
+      ansible.builtin.command: kubectl -n movie-rec-hub get pods,svc,pvc
+      register: database_status
+      changed_when: false
+    - name: Show the installed database resources
+      ansible.builtin.debug:
+        var: database_status.stdout_lines

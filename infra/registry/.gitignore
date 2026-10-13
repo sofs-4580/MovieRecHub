@@ -1,0 +1,12 @@
+/.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+*.tfplan
+*.tfplan.json
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+
+# Version .terraform.lock.hcl, which contains provider checksums, not credentials.

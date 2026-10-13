@@ -1,0 +1,39 @@
+# Build/push only: this file does not start the application or its databases.
+name: g34-images
+
+x-runtime: &runtime
+  # The shared GCP e2 VMs are amd64, including builds made on ARM laptops.
+  platform: linux/amd64
+
+services:
+  frontend:
+    <<: *runtime
+    image: europe-west4-docker.pkg.dev/${GCP_PROJECT_ID:?Define GCP_PROJECT_ID}/psia-g34/frontend:${IMAGE_TAG:?Export IMAGE_TAG with a unique version}
+    build:
+      context: ../../Frontend
+      labels:
+        org.opencontainers.image.version: ${IMAGE_TAG}
+
+  user-service:
+    <<: *runtime
+    image: europe-west4-docker.pkg.dev/${GCP_PROJECT_ID:?Define GCP_PROJECT_ID}/psia-g34/user-service:${IMAGE_TAG:?Export IMAGE_TAG with a unique version}
+    build:
+      context: ../../UserService
+      labels:
+        org.opencontainers.image.version: ${IMAGE_TAG}
+
+  profile-service:
+    <<: *runtime
+    image: europe-west4-docker.pkg.dev/${GCP_PROJECT_ID:?Define GCP_PROJECT_ID}/psia-g34/profile-service:${IMAGE_TAG:?Export IMAGE_TAG with a unique version}
+    build:
+      context: ../../ProfileService
+      labels:
+        org.opencontainers.image.version: ${IMAGE_TAG}
+
+  movie-service:
+    <<: *runtime
+    image: europe-west4-docker.pkg.dev/${GCP_PROJECT_ID:?Define GCP_PROJECT_ID}/psia-g34/movie-service:${IMAGE_TAG:?Export IMAGE_TAG with a unique version}
+    build:
+      context: ../../MovieService
+      labels:
+        org.opencontainers.image.version: ${IMAGE_TAG}

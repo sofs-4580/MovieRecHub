@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: profiles-db-data
+  namespace: movie-rec-hub
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: movie-rec-local
+  volumeName: profiles-db-data
+  resources:
+    requests:
+      storage: 4Gi
+---
+# Stable internal address used by the application.
+apiVersion: v1
+kind: Service
+metadata:
+  name: profiles-db
+  namespace: movie-rec-hub
+spec:
+  type: ClusterIP
+  selector:
+    app: profiles-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+# Governing Service for the StatefulSet's Pod identity.
+apiVersion: v1
+kind: Service
+metadata:
+  name: profiles-db-headless
+  namespace: movie-rec-hub
+spec:
+  clusterIP: None
+  selector:
+    app: profiles-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: profiles-db
+  namespace: movie-rec-hub
+spec:
+  serviceName: profiles-db-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: profiles-db
+  template:
+    metadata:
+      labels:
+        app: profiles-db
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: postgres:16.15-bookworm
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: movie_rec_hub_profiles
+            - name: POSTGRES_USER
+              value: profile_service
+            - name: POSTGRES_HOST_AUTH_METHOD
+              value: trust
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          startupProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: profiles-db-data
