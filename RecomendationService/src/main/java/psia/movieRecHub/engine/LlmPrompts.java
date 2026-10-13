@@ -17,6 +17,10 @@ public final class LlmPrompts {
                   Map.of(
                       "type",
                       "array",
+                      "minItems",
+                      5,
+                      "maxItems",
+                      5,
                       "items",
                       Map.of(
                           "type", "object",
@@ -36,21 +40,23 @@ public final class LlmPrompts {
 
   public static String pickUser(String request, List<MovieDoc> movies, int limit) {
     StringBuilder sb = new StringBuilder();
-    sb.append("Request: \"").append(clean(request, 300)).append("\"\n");
-    sb.append("Pick up to ").append(limit).append(" movies.\n");
-    sb.append("Catalogue (id | title (year) | genres | synopsis):\n");
+    sb.append("Catalogue (id | title (year) | genres):\n");
     for (MovieDoc m : movies) {
       sb.append(m.id())
           .append(" | ")
-          .append(clean(m.title(), 60))
+          .append(clean(m.title(), 50))
           .append(" (")
           .append(m.year())
           .append(") | ")
           .append(String.join(",", m.genres()))
-          .append(" | ")
-          .append(clean(m.synopsis(), 100))
           .append("\n");
     }
+    // A parte variável vem no fim, para o prefixo ficar em cache
+    sb.append("\nRequest: \"").append(clean(request, 300)).append("\"\n");
+    sb.append("Pick exactly ")
+        .append(limit)
+        .append(
+            " different movies from the catalogue that best match the request. Use their id.\n");
     return sb.toString();
   }
 
