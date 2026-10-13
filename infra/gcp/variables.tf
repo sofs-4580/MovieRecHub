@@ -78,7 +78,7 @@ variable "ssh_public_key_path" {
 
   validation {
     condition     = endswith(var.ssh_public_key_path, ".pub") && try(length(trimspace(file(pathexpand(var.ssh_public_key_path)))) > 0, false)
-    error_message = "Use an existing, readable, non-empty public SSH key file ending in .pub, with the matching private key next to it. Run ./infra/management/manage.sh ssh-key first."
+    error_message = "Use an existing, readable, non-empty public SSH key file ending in .pub, with the matching private key next to it. Open just mgmt and use ssh-keygen to prepare the key if needed."
   }
 }
 

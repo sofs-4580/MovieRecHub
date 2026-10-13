@@ -9,8 +9,7 @@ services:
         MANAGEMENT_UID: ${MANAGEMENT_UID:-1000}
         MANAGEMENT_GID: ${MANAGEMENT_GID:-1000}
     init: true
-    stdin_open: true
-    tty: true
+    command: ["sleep", "infinity"]
     environment:
       CLOUDSDK_CORE_PROJECT: ${GCP_PROJECT_ID:?Define GCP_PROJECT_ID no ficheiro local .env}
       CLOUDSDK_CONFIG: /home/cloudsdk/.config/gcloud
@@ -20,7 +19,7 @@ services:
       - type: bind
         source: ../..
         target: /workspace
-      # The helper creates this private directory before starting the container.
+      # just start creates this private directory before starting the container.
       - type: bind
         source: ./.local/gcloud
         target: /home/cloudsdk/.config/gcloud
