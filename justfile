@@ -22,6 +22,13 @@ mgmt:
 stop:
     {{compose}} stop management
 
+# Deploy the databases and applications to the existing Kubernetes cluster.
+deploy:
+    @test -r infra/management/.local/deployment.yml || { echo "Prepare infra/management/.local/deployment.yml with the published image tag and TMDB key." >&2; exit 1; }
+    @test -r infra/gcp/ansible-inventory.json || { echo "Generate infra/gcp/ansible-inventory.json from Terraform after creating the VMs." >&2; exit 1; }
+    {{compose}} exec -T --workdir /workspace/infra/ansible management ansible-playbook databases.yml
+    {{compose}} exec -T --workdir /workspace/infra/ansible management ansible-playbook deploy.yml -e @../management/.local/deployment.yml
+
 # Set IMAGE_TAG in this terminal before building, for example v1.
 images-build:
     {{images}} build
