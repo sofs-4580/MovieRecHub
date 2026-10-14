@@ -6,19 +6,21 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import psia.movieRecHub.dto.response.RecommendationResponseItemDto;
 import psia.movieRecHub.dto.response.RecommendationResultDto;
 import psia.movieRecHub.entities.RecommendationCache;
 import psia.movieRecHub.repository.RecommendationCacheRepository;
 
-public class RecommendationCasheService {
+@Service
+public class RecommendationCacheService {
 
   private final RecommendationCacheRepository repo;
   private final ObjectMapper objectMapper;
   private final String model;
 
-  public RecommendationCasheService(
+  public RecommendationCacheService(
       RecommendationCacheRepository repo,
       ObjectMapper objectMapper,
       @Value("${llm.model}") String model) {
