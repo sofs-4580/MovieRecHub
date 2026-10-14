@@ -52,4 +52,9 @@ public class RecommendationCacheService {
                         row.getItems(),
                         new TypeReference<List<RecommendationResponseItemDto>>() {})));
   }
+
+  @Transactional(readOnly = true)
+  public Optional<String> findInputHash(Long userId) {
+    return repo.findById(userId).map(RecommendationCache::getInputHash);
+  }
 }

@@ -52,7 +52,9 @@ public class RecommendationService {
             LlmPrompts.tasteSystem(),
             LlmPrompts.tasteUser(tastePrompt, movies),
             LlmPrompts.TASTE_SCHEMA);
-    cacheService.saveRecommendationCache(userId, result, Hash.sha256(tastePrompt));
+    if ("LLM".equals(result.source())) {
+      cacheService.saveRecommendationCache(userId, result, Hash.sha256(tastePrompt));
+    }
     return result;
   }
 
