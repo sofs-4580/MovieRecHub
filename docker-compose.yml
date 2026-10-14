@@ -121,6 +121,7 @@ services:
       USER_SERVICE_URL: http://user-service:8081
       PROFILE_SERVICE_URL: http://profile-service:8082
       MOVIE_SERVICE_URL: http://movie-service:8083
+      RECOMMENDATION_SERVICE_URL: http://recommendation-service:8084
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
     depends_on:
@@ -129,6 +130,8 @@ services:
       profile-service:
         condition: service_healthy
       movie-service:
+        condition: service_healthy
+      recommendation-service:
         condition: service_healthy
     restart: unless-stopped
 

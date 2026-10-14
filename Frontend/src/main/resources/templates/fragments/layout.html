@@ -10,6 +10,7 @@
     </a>
     <nav class="nav">
         <a th:href="@{/movies}" th:classappend="${active == 'movies'} ? 'active'">Movies</a>
+        <a th:if="${userId != null}" th:href="@{/recommendations}" th:classappend="${active == 'recommendations'} ? 'active'">For you</a>
         <a th:href="@{/lists}" th:classappend="${active == 'lists'} ? 'active'">Lists</a>
         <a th:if="${userId != null}" th:href="@{/profiles}" th:classappend="${active == 'profiles'} ? 'active'">People</a>
         <a th:if="${userId != null}" th:href="@{/profile}" th:classappend="${active == 'profile'} ? 'active'">My profile</a>
@@ -43,6 +44,19 @@
         <input type="checkbox" th:name="${name}" th:value="${g}" th:checked="${selected != null and selected.contains(g)}"/>
         <span th:text="${#strings.replace(#strings.toLowerCase(g), '_', '-')}">drama</span>
     </label>
+</div>
+
+<!-- Grelha de recomendacoes. items: lista de RecommendationItemDto. -->
+<div class="grid" th:fragment="recoGrid(items)" th:if="${items != null and not #lists.isEmpty(items)}">
+    <a class="card" th:each="m : ${items}" th:href="@{/movies/{id}(id=${m.movieId()})}">
+        <div class="poster" th:classappend="'tone-' + ${m.movieId() % 6}"
+             th:text="${#strings.substring(m.title(), 0, 1)}">M</div>
+        <div class="card-title" th:text="${m.title()}">Title</div>
+        <div class="card-meta"
+             th:text="${m.year()} + ' · ' + ${#strings.replace(#strings.toLowerCase(#strings.setJoin(m.genres(), ', ')), '_', '-')}">
+            Year · genres
+        </div>
+    </a>
 </div>
 
 </body>
