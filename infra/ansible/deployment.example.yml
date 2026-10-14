@@ -1,6 +1,6 @@
 # Copy to infra/management/.local/deployment.yml (ignored by Git).
 # Use a tag published for ALL FOUR images in your own Google Cloud project.
-application_image_tag: step3-20261013-1
+application_image_tag: v1
 # TMDB v3 API key (the applications currently use the api_key query parameter).
 # Fill in only the private copy. Never commit the real key.
 tmdb_api_key: ""

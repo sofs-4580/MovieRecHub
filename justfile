@@ -22,7 +22,7 @@ mgmt:
 stop:
     {{compose}} stop management
 
-# Set IMAGE_TAG in this terminal before building, for example step3-20261013-1.
+# Set IMAGE_TAG in this terminal before building, for example v1.
 images-build:
     {{images}} build
 

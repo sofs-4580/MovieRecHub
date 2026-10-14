@@ -188,7 +188,7 @@ Rever o plano antes de aplicar. Declara apenas a API Artifact Registry e um repo
 No terminal **do computador**, na raiz de `g34/`:
 
 ```bash
-export IMAGE_TAG=step3-20261013-1  # Exemplo: escolher uma versão NOVA para outro build.
+export IMAGE_TAG=v1  # Exemplo: usar v2, v3, etc. para novas versões.
 just images-build
 just images-login
 just images-push
@@ -241,7 +241,7 @@ O Python testa guards/templates com projeto/nós fictícios. Opcionalmente, `--p
 
 ```bash
 cd /workspace/infra/ansible
-ansible-playbook registry-access.yml -e registry_check_tag=step3-20261013-1
+ansible-playbook registry-access.yml -e registry_check_tag=v1
 ```
 
 Usar uma versão de `frontend` publicada **no teu próprio projeto**. O playbook atualiza a configuração se necessário e testa o pull num Pod por nó, incluindo o control plane. Usa `imagePullPolicy: Always`, para verificar acesso mesmo com imagem em cache. Os Pods apenas confirmam a existência do JAR; não arrancam a aplicação. Espera por `Succeeded` e tenta limpar o namespace temporário no fim, também em caso de falha. Não altera as BDs ou instala os serviços.
@@ -278,7 +278,7 @@ Os testes usam variáveis e chave fictícias, verificam guards, templates e cont
 
 ```bash
 cd /workspace/infra/ansible
-ansible-playbook registry-access.yml -e registry_check_tag=step3-20261013-1
+ansible-playbook registry-access.yml -e registry_check_tag=v1
 # Se o teste Nginx ainda ocupar a porta 30510:
 ansible-playbook smoke-test-cleanup.yml
 ansible-playbook databases.yml

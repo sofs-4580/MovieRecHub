@@ -30,7 +30,7 @@ configmaps = {obj["metadata"]["name"]: obj for obj in yaml.safe_load_all(configs
 variables = {
     "gcp_project_id": "g34-deploy-test",
     "registry_image_prefix": "europe-west4-docker.pkg.dev/g34-deploy-test/psia-g34",
-    "application_image_tag": "step3-20261013-1",
+    "application_image_tag": "v1",
     "application_config_checksum": hashlib.sha256(configs_path.read_text().rstrip('\n').encode()).hexdigest(),
     "tmdb_api_key": "0" * 32,
     "database_data_worker": options.worker_name,
