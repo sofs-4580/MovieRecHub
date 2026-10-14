@@ -1,4 +1,4 @@
-package psia.movieRecHub.dto;
+package psia.movieRecHub.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
