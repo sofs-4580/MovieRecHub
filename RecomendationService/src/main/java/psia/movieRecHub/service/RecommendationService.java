@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import psia.movieRecHub.client.OllamaLlmClient;
 import psia.movieRecHub.dto.response.RecommendationResponseItemDto;
 import psia.movieRecHub.dto.response.RecommendationResultDto;
+import psia.movieRecHub.engine.Hash;
 import psia.movieRecHub.engine.LlmAnswer;
 import psia.movieRecHub.engine.LlmPrompts;
 import psia.movieRecHub.engine.MovieDoc;
@@ -24,14 +25,39 @@ public class RecommendationService {
 
   private final CatalogRefreshService catalogue;
   private final OllamaLlmClient llm;
+  private final RecommendationCacheService cacheService;
 
-  public RecommendationService(CatalogRefreshService catalogue, OllamaLlmClient llm) {
+  public RecommendationService(
+      CatalogRefreshService catalogue,
+      OllamaLlmClient llm,
+      RecommendationCacheService cacheService) {
     this.catalogue = catalogue;
     this.llm = llm;
+    this.cacheService = cacheService;
   }
 
+  // prompt texto livre e llm recomenda no momento
   public RecommendationResultDto ask(String text) {
     List<MovieDoc> movies = catalogue.movies();
+    return recommend(
+        movies, LlmPrompts.askSystem(), LlmPrompts.askUser(text, movies), LlmPrompts.ASK_SCHEMA);
+  }
+
+  // recomendacoes qundo o user entra na aplicacao
+  public RecommendationResultDto refreshFor(Long userId, String tastePrompt) {
+    List<MovieDoc> movies = catalogue.movies();
+    RecommendationResultDto result =
+        recommend(
+            movies,
+            LlmPrompts.tasteSystem(),
+            LlmPrompts.tasteUser(tastePrompt, movies),
+            LlmPrompts.TASTE_SCHEMA);
+    cacheService.saveRecommendationCache(userId, result, Hash.sha256(tastePrompt));
+    return result;
+  }
+
+  private RecommendationResultDto recommend(
+      List<MovieDoc> movies, String system, String user, Map<String, Object> schema) {
     if (movies.isEmpty()) {
       return new RecommendationResultDto("FALLBACK", List.of());
     }
@@ -39,28 +65,22 @@ public class RecommendationService {
         movies.stream().collect(Collectors.toMap(MovieDoc::id, Function.identity()));
 
     try {
-      String json =
-          llm.generateJson(
-              LlmPrompts.pickSystem(),
-              LlmPrompts.pickUser(text, movies, LIMIT),
-              LlmPrompts.PICK_SCHEMA);
-
+      String json = llm.generateJson(system, user, schema);
       log.info("LLM raw answer: {}", json);
 
-      List<LlmAnswer.Pick> picks = LlmAnswer.parsePicks(json, byId.keySet(), LIMIT);
-      if (!picks.isEmpty()) {
+      List<Long> ids = LlmAnswer.parseIds(json, byId.keySet(), LIMIT);
+      if (!ids.isEmpty()) {
         List<RecommendationResponseItemDto> items =
-            picks.stream().map(p -> toItem(byId.get(p.movieId()), p.reason())).toList();
+            ids.stream().map(id -> toItem(byId.get(id))).toList();
         return new RecommendationResultDto("LLM", items);
       }
-      log.warn("LLM gave no valid picks, using fallback");
+      log.warn("LLM gave no valid ids, using fallback");
     } catch (LlmUnavailableException e) {
       log.warn("LLM unavailable, using fallback: {}", e.getMessage());
     }
     return fallback(movies);
   }
 
-  /** Plano B: melhores por rating, depois mais recentes. */
   private RecommendationResultDto fallback(List<MovieDoc> movies) {
     List<RecommendationResponseItemDto> items =
         movies.stream()
@@ -69,12 +89,13 @@ public class RecommendationService {
                     .reversed()
                     .thenComparing(Comparator.comparingInt(MovieDoc::year).reversed()))
             .limit(LIMIT)
-            .map(m -> toItem(m, "Popular in the catalogue"))
+            .map(this::toItem)
             .toList();
     return new RecommendationResultDto("FALLBACK", items);
   }
 
-  private RecommendationResponseItemDto toItem(MovieDoc m, String reason) {
-    return new RecommendationResponseItemDto(m.id(), m.title(), m.year(), m.genres(), reason);
+  private RecommendationResponseItemDto toItem(MovieDoc m) {
+    return new RecommendationResponseItemDto(
+        m.id(), m.title(), m.year(), m.genres(), "Genres: " + String.join(", ", m.genres()));
   }
 }

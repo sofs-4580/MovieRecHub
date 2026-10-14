@@ -1,6 +1,6 @@
 package psia.movieRecHub.engine;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.List;
 import java.util.Set;
@@ -8,25 +8,37 @@ import org.junit.jupiter.api.Test;
 
 class LlmAnswersTest {
 
+  private static final Set<Long> CATALOGUE = Set.of(1L, 2L, 3L, 4L, 5L, 6L);
+
   @Test
   void ignoresIdsNotInCatalogue() {
-    String json = "{\"picks\":[{\"id\":1,\"reason\":\"ok\"},{\"id\":999,\"reason\":\"invented\"}]}";
-    List<LlmAnswer.Pick> picks = LlmAnswer.parsePicks(json, Set.of(1L, 2L), 5);
-    assertEquals(1, picks.size());
-    assertEquals(1L, picks.get(0).movieId());
+    String json = "{\"count\":5,\"ids\":[1,99,2,100,3]}";
+    assertEquals(List.of(1L, 2L, 3L), LlmAnswer.parseIds(json, CATALOGUE, 5));
   }
 
   @Test
-  void removesDuplicatesAndRespectsLimit() {
-    String json =
-        "{\"picks\":[{\"id\":1,\"reason\":\"a\"},{\"id\":1,\"reason\":\"b\"},"
-            + "{\"id\":2,\"reason\":\"c\"},{\"id\":3,\"reason\":\"d\"}]}";
-    List<LlmAnswer.Pick> picks = LlmAnswer.parsePicks(json, Set.of(1L, 2L, 3L), 2);
-    assertEquals(2, picks.size());
+  void removesDuplicates() {
+    String json = "{\"count\":5,\"ids\":[1,1,2,2,3]}";
+    assertEquals(List.of(1L, 2L, 3L), LlmAnswer.parseIds(json, CATALOGUE, 5));
   }
 
   @Test
   void invalidJsonGivesEmptyList() {
-    assertTrue(LlmAnswer.parsePicks("not json", Set.of(1L), 5).isEmpty());
+    assertEquals(List.of(), LlmAnswer.parseIds("not json", CATALOGUE, 5));
+  }
+
+  @Test
+  void respectsRequestedCount() {
+    String json = "{\"count\":2,\"ids\":[1,2,3,4,5]}";
+    assertEquals(List.of(1L, 2L), LlmAnswer.parseIds(json, CATALOGUE, 5));
+  }
+
+  @Test
+  void clampsAbsurdCountAndWorksWithoutCount() {
+    assertEquals(
+        List.of(1L, 2L, 3L, 4L, 5L),
+        LlmAnswer.parseIds("{\"count\":50,\"ids\":[1,2,3,4,5]}", CATALOGUE, 5));
+    assertEquals(
+        List.of(1L, 2L, 3L, 4L, 5L), LlmAnswer.parseIds("{\"ids\":[1,2,3,4,5]}", CATALOGUE, 5));
   }
 }

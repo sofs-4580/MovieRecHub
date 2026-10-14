@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
-import psia.movieRecHub.dto.MovieResponse;
+import psia.movieRecHub.dto.response.MovieResponseDto;
 import psia.movieRecHub.engine.MovieDoc;
 
 @Component
@@ -26,7 +26,7 @@ public class MovieServiceClient {
 
   /** Vai buscar o catálogo todo ao MovieService. */
   public List<MovieDoc> movies() {
-    MovieResponse[] raw = rest.getForObject(baseUrl + "/api/movies", MovieResponse[].class);
+    MovieResponseDto[] raw = rest.getForObject(baseUrl + "/api/movies", MovieResponseDto[].class);
     if (raw == null) {
       return List.of();
     }
@@ -36,7 +36,7 @@ public class MovieServiceClient {
         .toList();
   }
 
-  private static MovieDoc toDoc(MovieResponse m) {
+  private static MovieDoc toDoc(MovieResponseDto m) {
     Set<String> genres = new TreeSet<>();
     if (m.genres() != null) {
       m.genres().forEach(g -> genres.add(g.toUpperCase()));
