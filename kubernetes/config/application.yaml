@@ -1,0 +1,60 @@
+# Common runtime settings; no personal credentials in ConfigMaps.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: application-common
+  namespace: movie-rec-hub
+data:
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=50.0"
+  SERVER_SHUTDOWN: graceful
+  SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 20s
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  namespace: movie-rec-hub
+data:
+  SERVER_PORT: "8081"
+  DB_URL: jdbc:postgresql://users-db:5432/movie_rec_hub_users
+  DB_USERNAME: user_service
+  DB_PASSWORD: ""
+  PROFILE_SERVICE_URL: http://profile-service:8082
+  MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: readinessState,db
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: profile-service-config
+  namespace: movie-rec-hub
+data:
+  SERVER_PORT: "8082"
+  DB_URL: jdbc:postgresql://profiles-db:5432/movie_rec_hub_profiles
+  DB_USERNAME: profile_service
+  DB_PASSWORD: ""
+  USER_SERVICE_URL: http://user-service:8081
+  MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: readinessState,db
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: movie-service-config
+  namespace: movie-rec-hub
+data:
+  SERVER_PORT: "8083"
+  DB_URL: jdbc:postgresql://movie-db:5432/movie_rec_hub_movies
+  DB_USERNAME: movie_service
+  DB_PASSWORD: ""
+  MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: readinessState,db
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: movie-rec-hub
+data:
+  SERVER_PORT: "8080"
+  USER_SERVICE_URL: http://user-service:8081
+  PROFILE_SERVICE_URL: http://profile-service:8082
+  MOVIE_SERVICE_URL: http://movie-service:8083

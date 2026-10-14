@@ -19,6 +19,9 @@ output "ansible_inventory" {
         kubernetes_pod_cidr          = local.pod_cidr
         kubernetes_service_cidr      = local.service_cidr
         calico_ipip_mode             = "Always"
+        gcp_project_id               = var.project_id
+        registry_image_prefix        = local.registry_image_prefix
+        registry_service_account     = google_service_account.nodes.email
       }
       children = {
         control_plane = {

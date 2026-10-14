@@ -13,6 +13,15 @@ mock_provider "google" {
   }
 }
 
+# The account email is computed by Google; make it known in these plan-only tests.
+override_resource {
+  target          = google_service_account.nodes
+  override_during = plan
+  values = {
+    email = "psia-g34-nodes@g34-test-project.iam.gserviceaccount.com"
+  }
+}
+
 variables {
   project_id          = "g34-test-project"
   ssh_public_key_path = "tests/ssh-test.pub"
@@ -20,6 +29,23 @@ variables {
 
 run "initial_infrastructure" {
   command = plan
+
+  assert {
+    condition = (
+      google_service_account.nodes.project == var.project_id &&
+      google_artifact_registry_repository_iam_member.nodes.role == "roles/artifactregistry.reader" &&
+      google_artifact_registry_repository_iam_member.nodes.repository == "psia-g34" &&
+      google_artifact_registry_repository_iam_member.nodes.location == "europe-west4" &&
+      google_artifact_registry_repository_iam_member.nodes.member == "serviceAccount:${google_service_account.nodes.email}" &&
+      !google_project_service.iam.disable_on_destroy &&
+      google_compute_instance.control_plane.service_account[0].email == google_service_account.nodes.email &&
+      google_compute_instance.worker[0].service_account[0].email == google_service_account.nodes.email &&
+      google_compute_instance.worker[0].service_account[0].scopes == toset(["https://www.googleapis.com/auth/cloud-platform"]) &&
+      output.ansible_inventory.all.vars.registry_image_prefix == "europe-west4-docker.pkg.dev/g34-test-project/psia-g34" &&
+      output.ansible_inventory.all.vars.registry_service_account == google_service_account.nodes.email
+    )
+    error_message = "Nodes must share the dedicated VM identity, with a repository-scoped reader role, OAuth scope and matching inventory, without personal keys."
+  }
 
   assert {
     condition     = length(google_compute_instance.worker) == 1 && length(output.public_ips.workers) == 1 && length(output.ansible_inventory.all.children.control_plane.hosts) == 1
@@ -61,7 +87,7 @@ run "add_worker_without_moving_data" {
   }
 
   assert {
-    condition     = length(google_compute_instance.worker[0].attached_disk) == 1 && length(google_compute_instance.worker[1].attached_disk) == 0 && length(output.ansible_inventory.all.children.workers.hosts) == 2
+    condition     = length(google_compute_instance.worker[0].attached_disk) == 1 && length(google_compute_instance.worker[1].attached_disk) == 0 && length(output.ansible_inventory.all.children.workers.hosts) == 2 && google_compute_instance.worker[1].service_account[0].email == google_service_account.nodes.email
     error_message = "Adding a worker must keep the data disk on worker 1 and include both workers in the inventory."
   }
 }

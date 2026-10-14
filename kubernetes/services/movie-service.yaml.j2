@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: movie-service
+  namespace: movie-rec-hub
+spec:
+  replicas: 1
+  # Keep one application instance/version during updates on this small installation.
+  strategy:
+    type: Recreate
+  progressDeadlineSeconds: 600
+  selector:
+    matchLabels:
+      app: movie-service
+  template:
+    metadata:
+      labels:
+        app: movie-service
+      annotations:
+        checksum/config: "{{ application_config_checksum }}"
+        checksum/tmdb: "{{ tmdb_api_key | hash('sha256') }}"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: movie-service
+          image: "{{ registry_image_prefix }}/movie-service:{{ application_image_tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8083
+          envFrom:
+            - configMapRef:
+                name: application-common
+            - configMapRef:
+                name: movie-service-config
+          env:
+            - name: TMDB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: movie-service-tmdb
+                  key: TMDB_API_KEY
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: movie-service
+  namespace: movie-rec-hub
+spec:
+  type: ClusterIP
+  selector:
+    app: movie-service
+  ports:
+    - name: http
+      port: 8083
+      targetPort: http

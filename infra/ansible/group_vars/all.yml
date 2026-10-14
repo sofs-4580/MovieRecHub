@@ -7,3 +7,8 @@ calico_version: "3.31.4"
 calico_manifest_sha256: "6e89ee080d6dae58c620c47e3fcb7a9bfc40748422c868c924b7482dd5145ce2"
 containerd_socket: "unix:///run/containerd/containerd.sock"
 kubernetes_pause_image: "registry.k8s.io/pause:3.10.1"
+# Official binary/version/checksum used by the upstream Kubernetes 1.35.9 GCE installer.
+gcp_credential_provider_version: "v0.0.2-gke.4"
+gcp_credential_provider_sha512: "156058e5b3994cba91c23831774033e0d505d6d8b80f43541ef6af91b320fd9dfaabe42ec8a8887b51d87104c2b57e1eb895649d681575ffc80dd9aee8e563db"
+credential_provider_bin_dir: "/usr/local/lib/kubelet-credential-providers"
+credential_provider_config: "/etc/kubernetes/image-credentials.yaml"

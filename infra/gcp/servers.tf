@@ -35,6 +35,12 @@ resource "google_compute_instance" "control_plane" {
   tags                      = [local.cluster_name]
   metadata                  = local.instance_metadata
 
+  service_account {
+    email  = google_service_account.nodes.email
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+  depends_on = [google_artifact_registry_repository_iam_member.nodes]
+
   boot_disk {
     auto_delete = true
     initialize_params {
@@ -62,6 +68,12 @@ resource "google_compute_instance" "worker" {
   allow_stopping_for_update = true
   tags                      = [local.cluster_name]
   metadata                  = local.instance_metadata
+
+  service_account {
+    email  = google_service_account.nodes.email
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+  depends_on = [google_artifact_registry_repository_iam_member.nodes]
 
   boot_disk {
     auto_delete = true

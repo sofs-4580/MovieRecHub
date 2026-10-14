@@ -68,7 +68,7 @@ cd /workspace/infra/gcp
 | `terraform output public_ips` | Mostra os IPs públicos das máquinas após o deployment. |
 | `terraform output -json ansible_inventory > ansible-inventory.json` | Gera o inventário com os dados de ligação para Ansible. |
 
-O plano pressupõe a API Compute Engine ativa, a rede/sub-rede `default` existente e as regras `default-allow-ssh` e `default-allow-internal` a permitir o acesso necessário.
+O plano pressupõe a API Compute Engine ativa, a rede/sub-rede `default` existente e as regras `default-allow-ssh` e `default-allow-internal` a permitir o acesso necessário. **Antes de aplicar a infraestrutura das VMs, criar o registry com `infra/registry/`**, conforme a secção de imagens abaixo. O Terraform de `infra/gcp/` cria também a identidade `psia-g34-nodes` e concede leitura nesse registry; não cria outro registry.
 
 ### Ansible — configurar Kubernetes
 
@@ -104,6 +104,8 @@ kubectl get pods -n kube-system
 | `join-workers.yml` | Junta workers novos e verifica nós `Ready`, Calico, CoreDNS e acesso local à API. |
 
 As versões comuns ficam em `group_vars/all.yml`; utilizador SSH, chave e IPs vêm do inventário Terraform. A primeira ligação SSH aceita a chave da VM; uma chave diferente numa ligação posterior é rejeitada. O kubeconfig administrativo fica em `~/.kube/config` no volume pessoal do contentor.
+
+`cluster.yml` instala também o plugin oficial de credenciais de imagens. Regenerar o inventário com o Terraform atualizado: agora inclui projeto, prefixo do registry e identidade esperada das VMs. Sem estes campos, a configuração termina com uma indicação para atualizar o inventário.
 
 Podemos repetir `ansible-playbook cluster.yml`: não faz reset do cluster, não junta novamente workers existentes e só cria ext4 num disco sem partições/assinaturas. Não executa upgrades Kubernetes. `--check` não simula uma instalação completa e é recusado; usar `--syntax-check` para a validação local.
 
@@ -206,7 +208,7 @@ O push usa explicitamente `--platform linux/amd64`: publica a imagem para as VMs
 
 `images-login` exige `just start` e login Google válido. Se surgir `invalid_rapt`, repetir o login em `just mgmt`. O token dura cerca de uma hora; renovar o login Docker quando necessário. A configuração Docker fica em `infra/management/.local/docker/`, privada e ignorada pelo Git; o socket Docker não é montado no contentor. [Autenticação oficial](https://docs.cloud.google.com/artifact-registry/docs/docker/authentication).
 
-O registry privado exige autenticação também no futuro cluster kubeadm/containerd: login Docker no computador **não autentica os nós**. Esse acesso e os Deployments serão configurados na etapa da aplicação. Não criar chaves JSON de service accounts nem tornar imagens públicas para contornar a autenticação.
+O registry privado exige autenticação também no cluster kubeadm/containerd: login Docker no computador **não autentica os nós**. O acesso automático está preparado na secção seguinte; os Deployments da aplicação ainda faltam. Não precisamos de chaves JSON de service accounts ou de imagens públicas.
 
 Para listar imagens/digests, dentro de `just mgmt`:
 
@@ -216,5 +218,80 @@ gcloud artifacts docker images list \
 ```
 
 Guardar imagens pode ter custo de armazenamento; descarregá-las para o computador pode ter custo de tráfego. O registry permanece depois de parar ferramentas ou destruir VMs. Não há limpeza automática de versões. `terraform destroy` **em `infra/registry/`** elimina o registry e as suas imagens; é uma limpeza independente e destrutiva. [Preços oficiais](https://cloud.google.com/artifact-registry/pricing).
+
+### Acesso dos nós às imagens privadas
+
+`infra/gcp/registry-access.tf` cria uma **service account Google das VMs**, com `Artifact Registry Reader` apenas no repositório `psia-g34`. Ambas as VMs usam essa identidade. O Ansible instala `auth-provider-gcp` e configura o kubelet para pedir tokens ao metadata server Google quando precisa de uma imagem desse registry. As credenciais são renováveis; não copiamos o login pessoal ou um token permanente para os nós.
+
+Validar localmente em `just mgmt`, sem VMs:
+
+```bash
+cd /workspace/infra/gcp
+terraform validate
+terraform test
+cd /workspace/infra/ansible
+ansible-playbook -i tests/inventory.yml registry-access.yml --syntax-check
+ansible-playbook -i tests/inventory.yml cluster.yml --syntax-check
+/opt/ansible/bin/python3 tests/check-registry-access.py
+```
+
+O Python testa guards/templates com projeto/nós fictícios. Opcionalmente, `--provider-bin CAMINHO` testa também o executável oficial já descarregado e verificado, com metadata/tokens simulados em localhost; sem esse argumento não executa o plugin. Não consulta Google Cloud nem configura o computador como nó.
+
+**Mais tarde**, depois de rever/aplicar Terraform, regenerar o inventário e instalar o cluster:
+
+```bash
+cd /workspace/infra/ansible
+ansible-playbook registry-access.yml -e registry_check_tag=step3-20261013-1
+```
+
+Usar uma versão de `frontend` publicada **no teu próprio projeto**. O playbook atualiza a configuração se necessário e testa o pull num Pod por nó, incluindo o control plane. Usa `imagePullPolicy: Always`, para verificar acesso mesmo com imagem em cache. Os Pods apenas confirmam a existência do JAR; não arrancam a aplicação. Espera por `Succeeded` e tenta limpar o namespace temporário no fim, também em caso de falha. Não altera as BDs ou instala os serviços.
+
+O binário/ficheiros de configuração são mantidos pelo Ansible; mudanças reiniciam kubelet, preservando também `--node-ip`. No cluster novo já ficam instalados por `cluster.yml`; repetir `registry-access.yml` acrescenta a verificação real. Este teste **ainda não foi executado nas VMs**. Não é necessário `images-login` nos nós nem `imagePullSecrets` com tokens de uma hora.
+
+O registry é gerido por `infra/registry/`; identidade e permissão pertencem ao estado `infra/gcp/` e são removidas com a instalação das VMs. Não destruir o registry enquanto o cluster depender das suas imagens. [Credential providers Kubernetes](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/).
+
+### Deployment das quatro aplicações
+
+`deploy.yml` instala frontend, UserService, ProfileService e MovieService em `movie-rec-hub`. Usa as imagens publicadas, ligações internas às três BDs e Secret para a chave TMDB. RecommendationService/Ollama continuam adiados. Não cria VMs nem instala o cluster/BDs por si.
+
+No computador, na raiz de `g34/`, preparar uma vez:
+
+```bash
+install -d -m 0700 infra/management/.local
+cp -n infra/ansible/deployment.example.yml infra/management/.local/deployment.yml
+chmod 600 infra/management/.local/deployment.yml
+```
+
+Editar **apenas a cópia local**: `application_image_tag` deve existir nas quatro imagens do teu registry; preencher `tmdb_api_key` com a chave API v3 TMDB. O ficheiro fica ignorado pelo Git e acessível no contentor pelo mount do projeto. Não passar a chave na linha de comandos. O Secret é aplicado por stdin, com output oculto, sem escrever a chave num ficheiro remoto; Secret não equivale a encriptação de dados no cluster.
+
+Validar agora em `just mgmt`, sem VMs/chave real:
+
+```bash
+cd /workspace/infra/ansible
+ansible-playbook -i tests/inventory.yml deploy.yml --syntax-check
+/opt/ansible/bin/python3 tests/check-deployment.py
+```
+
+Os testes usam variáveis e chave fictícias, verificam guards, templates e contratos com o Compose. Não fazem deployment nem contactam Google/TMDB.
+
+**Mais tarde**, com imagens publicadas, Terraform aplicado, inventário atualizado e `cluster.yml` concluído:
+
+```bash
+cd /workspace/infra/ansible
+ansible-playbook registry-access.yml -e registry_check_tag=step3-20261013-1
+# Se o teste Nginx ainda ocupar a porta 30510:
+ansible-playbook smoke-test-cleanup.yml
+ansible-playbook databases.yml
+ansible-playbook deploy.yml -e @../management/.local/deployment.yml
+kubectl -n movie-rec-hub get deployments,pods,services
+```
+
+Usar em `registry_check_tag` a versão escolhida no ficheiro local. O deploy recusa a porta 30510 se estiver ocupada por outro Service, espera pelas BDs, aplica ConfigMaps/Secret/manifests, espera pelos quatro Deployments e verifica readiness/página de login através do IP público dos workers. Mostra `http://IP_PUBLICO_DO_WORKER:30510/` para abrir no browser. Os backends e as BDs usam Services internos.
+
+Os manifests ficam em `kubernetes/config/` e `kubernetes/services/`. Têm uma réplica e estratégia `Recreate`: atualizar um serviço implica uma interrupção curta; reiniciar UserService perde as sessões em memória. As probes distinguem liveness de readiness, que inclui a própria BD nos backends. Recursos/JVM têm valores iniciais para as VMs pequenas, sem teste de carga GCP.
+
+Repetir com os mesmos parâmetros mantém os Pods. Mudanças na configuração fazem rollout; mudar a chave reinicia MovieService para carregar o novo ambiente. Os dados das BDs são conservados. A automação não apaga PVCs/namespace nem ressemeia uma BD Movie já preenchida.
+
+Os manifests passaram num KIND temporário local; execução Ansible por SSH e instalação completa nas VMs GCP continuam por validar.
 
 Para terminar, executar `exit` dentro da shell e depois `just stop` no computador. Credenciais, chaves e kubeconfig persistem nas montagens/volumes; estado/planos ficam em `infra/gcp/` e `infra/registry/`. Os ficheiros pessoais são ignorados pelo Git.

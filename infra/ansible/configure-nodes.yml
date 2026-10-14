@@ -133,12 +133,8 @@
         name: "{{ item }}"
         selection: hold
       loop: [kubelet, kubeadm, kubectl]
-    - name: Set the private node IP explicitly
-      ansible.builtin.copy:
-        dest: /etc/default/kubelet
-        content: "KUBELET_EXTRA_ARGS=--node-ip={{ kubernetes_node_ip }}\n"
-        mode: "0644"
-      notify: Restart kubelet
+    - name: Prepare automatic registry credentials before kubeadm
+      ansible.builtin.include_tasks: tasks/registry-credentials.yml
     - name: Enable kubelet on boot
       ansible.builtin.systemd_service:
         name: kubelet

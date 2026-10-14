@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ registry_check_namespace }}
+{% for node in groups['control_plane'] + groups['workers'] %}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pull-{{ loop.index }}
+  namespace: {{ registry_check_namespace }}
+spec:
+  nodeName: {{ node }}
+  restartPolicy: Never
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: image-check
+      image: "{{ registry_image_prefix }}/frontend:{{ registry_check_tag }}"
+      imagePullPolicy: Always
+      # Check the image without starting the web application or needing a database.
+      command: [/bin/sh, -ec, "test -s /app/app.jar"]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {cpu: 100m, memory: 32Mi}
+{% endfor %}

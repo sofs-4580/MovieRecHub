@@ -1,0 +1,98 @@
+---
+# For an existing cluster: update node credentials, then verify a private pull per node.
+# New clusters already install these credentials through cluster.yml.
+- name: Configure automatic registry credentials on existing nodes
+  hosts: control_plane:workers
+  become: true
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Require a real run and an explicit published version
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - registry_check_tag is defined
+          - registry_check_tag | default('') is match('^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
+          - registry_check_tag | default('') != 'latest'
+        fail_msg: "Run after cluster.yml with -e registry_check_tag=YOUR_PUBLISHED_VERSION. Use --syntax-check for local validation."
+    - name: Check kubelet installation
+      ansible.builtin.stat:
+        path: /usr/bin/kubelet
+      register: kubelet_binary
+    - name: Require the cluster installation before updating its credentials
+      ansible.builtin.assert:
+        that: kubelet_binary.stat.exists
+        fail_msg: "Install the cluster with cluster.yml first."
+  tasks:
+    - name: Install the same registry configuration used during cluster creation
+      ansible.builtin.include_tasks: tasks/registry-credentials.yml
+    - name: Apply credential changes before testing pulls
+      ansible.builtin.meta: flush_handlers
+    - name: Check kubelet is active
+      ansible.builtin.command: systemctl is-active kubelet
+      changed_when: false
+  handlers:
+    - name: Restart kubelet
+      ansible.builtin.systemd_service:
+        name: kubelet
+        state: restarted
+
+- name: Verify the kubelet can pull the private image on every node
+  hosts: control_plane
+  become: true
+  any_errors_fatal: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Check the Kubernetes administration prerequisites
+      ansible.builtin.include_tasks: tasks/check-cluster.yml
+    - name: Choose a namespace used only by this invocation
+      ansible.builtin.set_fact:
+        registry_check_namespace: "registry-check-{{ ansible_date_time.epoch }}-{{ 999999 | random }}"
+    - name: Test private pulls and remove all temporary resources afterwards
+      block:
+        - name: Render the temporary image pull test
+          ansible.builtin.template:
+            src: templates/registry-access-check.yaml.j2
+            dest: /home/ubuntu/registry-access-check.yaml
+            mode: "0644"
+        - name: Create one temporary check Pod per node
+          ansible.builtin.command: kubectl apply -f /home/ubuntu/registry-access-check.yaml
+        - name: Wait for every private image check to succeed
+          ansible.builtin.command:
+            argv:
+              - kubectl
+              - -n
+              - "{{ registry_check_namespace }}"
+              - wait
+              - --for=jsonpath={.status.phase}=Succeeded
+              - pod
+              - --all
+              - --timeout=180s
+          changed_when: false
+        - name: Show the completed Pods and their nodes
+          ansible.builtin.command: "kubectl -n {{ registry_check_namespace }} get pods -o wide"
+          register: pull_results
+          changed_when: false
+        - name: Report the real private pull results
+          ansible.builtin.debug:
+            var: pull_results.stdout_lines
+      rescue:
+        - name: Read Pod status and pull failures
+          ansible.builtin.command: "kubectl -n {{ registry_check_namespace }} describe pods"
+          register: pull_failures
+          changed_when: false
+          failed_when: false
+        - name: Show the diagnosis without credential output
+          ansible.builtin.debug:
+            var: pull_failures.stdout_lines
+        - name: Require successful private image pulls before deployment
+          ansible.builtin.fail:
+            msg: "Private image check failed. Inspect IAM, VM identity/scopes, kubelet provider and published tag in the preceding events."
+      always:
+        - name: Remove only this invocation's namespace and test Pods
+          ansible.builtin.command:
+            argv: [kubectl, delete, namespace, "{{ registry_check_namespace }}", --ignore-not-found, --wait=true, --timeout=90s]
+        - name: Remove the temporary manifest
+          ansible.builtin.file:
+            path: /home/ubuntu/registry-access-check.yaml
+            state: absent

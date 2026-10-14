@@ -1,0 +1,134 @@
+---
+# Apply the application manifests as in lab4; cluster and databases must exist first.
+- name: Deploy frontend and the three backend services
+  hosts: control_plane
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  pre_tasks:
+    - name: Require the current inventory and an explicit published image version
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - groups.get('control_plane', []) | length == 1
+          - groups.get('workers', []) | length >= 1
+          - gcp_project_id is defined
+          - registry_image_prefix == 'europe-west4-docker.pkg.dev/' ~ gcp_project_id ~ '/psia-g34'
+          - application_image_tag is defined
+          - application_image_tag | default('') is string
+          - application_image_tag | default('') is match('^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
+          - application_image_tag | default('') != 'latest'
+        fail_msg: "Use the updated Terraform inventory and -e @../management/.local/deployment.yml with a version published for all four images. --syntax-check is the local validation mode."
+    - name: Require a TMDB key from the private local variables file
+      ansible.builtin.assert:
+        that:
+          - tmdb_api_key is defined
+          - tmdb_api_key | default('') is string
+          - tmdb_api_key | default('') | trim | length > 0
+        fail_msg: "Fill tmdb_api_key in the ignored local deployment.yml; never put the real key in Git or command-line arguments."
+      no_log: true
+    - name: Check the control plane prerequisites
+      ansible.builtin.include_tasks: tasks/check-cluster.yml
+    - name: Wait for the application workers to be Ready
+      ansible.builtin.command:
+        argv: [kubectl, wait, --for=condition=Ready, "node/{{ item }}", --timeout=300s]
+      loop: "{{ groups['workers'] }}"
+      changed_when: false
+    - name: Read existing Service ports before reserving the frontend port
+      ansible.builtin.command: kubectl get services --all-namespaces -o json
+      register: existing_services
+      changed_when: false
+    - name: Refuse a frontend NodePort already used by another application
+      ansible.builtin.assert:
+        that: item.metadata.namespace == 'movie-rec-hub' and item.metadata.name == 'frontend'
+        fail_msg: "NodePort 30510 is occupied. If the Nginx test is installed, run smoke-test-cleanup.yml first; other Services require review."
+      loop: "{{ (existing_services.stdout | from_json)['items'] }}"
+      loop_control:
+        label: "{{ item.metadata.namespace }}/{{ item.metadata.name }}"
+      when: >-
+        item.spec.ports | default([]) | selectattr('nodePort', 'defined') |
+        selectattr('nodePort', 'eq', 30510) | list | length > 0
+    - name: Require the three database StatefulSets to be Ready
+      ansible.builtin.command:
+        argv: [kubectl, -n, movie-rec-hub, rollout, status, "statefulset/{{ item }}", --timeout=300s]
+      loop: [users-db, profiles-db, movie-db]
+      changed_when: false
+  tasks:
+    - name: Copy the application namespace and non-secret configuration
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../kubernetes/{{ item }}"
+        dest: "/home/ubuntu/{{ item | basename }}"
+        mode: "0644"
+      loop: [namespace.yaml, config/application.yaml]
+    - name: Apply the namespace and ConfigMaps
+      ansible.builtin.command:
+        argv: [kubectl, apply, -f, "/home/ubuntu/{{ item }}"]
+      loop: [namespace.yaml, application.yaml]
+      register: application_config_apply
+      changed_when: "' created' in application_config_apply.stdout or ' configured' in application_config_apply.stdout"
+    - name: Apply the TMDB Secret through stdin without writing a remote credential file
+      ansible.builtin.command:
+        argv: [kubectl, apply, -f, -]
+        stdin: >-
+          {{ {'apiVersion': 'v1', 'kind': 'Secret',
+              'metadata': {'name': 'movie-service-tmdb', 'namespace': 'movie-rec-hub'},
+              'type': 'Opaque', 'data': {'TMDB_API_KEY': tmdb_api_key | b64encode}} | to_json }}
+      register: tmdb_secret_apply
+      changed_when: "' created' in tmdb_secret_apply.stdout or ' configured' in tmdb_secret_apply.stdout"
+      no_log: true
+    - name: Calculate a configuration checksum to restart Pods when environment settings change
+      ansible.builtin.set_fact:
+        application_config_checksum: "{{ lookup('file', playbook_dir ~ '/../../kubernetes/config/application.yaml') | hash('sha256') }}"
+    - name: Render the application manifests with the personal registry and version
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../kubernetes/services/{{ item }}.yaml.j2"
+        dest: "/home/ubuntu/{{ item }}.yaml"
+        mode: "0644"
+      loop: [user-service, profile-service, movie-service, frontend]
+    - name: Apply the four Deployments and Services
+      ansible.builtin.command:
+        argv: [kubectl, apply, -f, "/home/ubuntu/{{ item }}.yaml"]
+      loop: [user-service, profile-service, movie-service, frontend]
+      register: application_apply
+      changed_when: "' created' in application_apply.stdout or ' configured' in application_apply.stdout"
+    - name: Wait for all four Deployments to be Ready
+      ansible.builtin.command:
+        argv: [kubectl, -n, movie-rec-hub, rollout, status, "deployment/{{ item }}", --timeout=600s]
+      loop: [user-service, profile-service, movie-service, frontend]
+      changed_when: false
+    - name: Verify frontend readiness through every worker's public NodePort
+      ansible.builtin.uri:
+        url: "http://{{ hostvars[item].ansible_host }}:30510/actuator/health/readiness"
+        return_content: true
+        status_code: 200
+        use_proxy: false
+        timeout: 10
+      loop: "{{ groups['workers'] }}"
+      delegate_to: localhost
+      become: false
+      register: frontend_ready
+      until: frontend_ready.status | default(0) == 200 and frontend_ready.json.status | default('') == 'UP'
+      retries: 12
+      delay: 5
+    - name: Verify that the frontend login page is served
+      ansible.builtin.uri:
+        url: "http://{{ hostvars[item].ansible_host }}:30510/login"
+        status_code: 200
+        use_proxy: false
+        timeout: 10
+      loop: "{{ groups['workers'] }}"
+      delegate_to: localhost
+      become: false
+    - name: Show application Pods, Deployments and Services
+      ansible.builtin.command: kubectl -n movie-rec-hub get deployments,pods,services
+      register: application_status
+      changed_when: false
+    - name: Report the installed resources
+      ansible.builtin.debug:
+        var: application_status.stdout_lines
+    - name: Show the browser address for each worker
+      ansible.builtin.debug:
+        msg: "Frontend: http://{{ hostvars[item].ansible_host }}:30510/"
+      loop: "{{ groups['workers'] }}"
