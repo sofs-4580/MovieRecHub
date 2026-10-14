@@ -10,8 +10,8 @@ run "personal_registry" {
     error_message = "Each installation must publish to its personal project using the shared repository and location."
   }
   assert {
-    condition     = google_artifact_registry_repository.images.docker_config[0].immutable_tags && !google_project_service.artifact_registry.disable_on_destroy
-    error_message = "Published tags must be immutable; removing the registry must not disable a project-wide API."
+    condition     = !google_artifact_registry_repository.images.docker_config[0].immutable_tags && !google_project_service.artifact_registry.disable_on_destroy
+    error_message = "Development tags must allow replacement; removing the registry must not disable a project-wide API."
   }
 }
 

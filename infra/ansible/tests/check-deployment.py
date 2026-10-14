@@ -24,6 +24,7 @@ tag_guard = deployment["pre_tasks"][0]
 key_guard = deployment["pre_tasks"][1]
 port_guard = next(task for task in deployment["pre_tasks"] if task.get("name") == "Refuse a frontend NodePort already used by another application")
 secret_task = next(task for task in deployment["tasks"] if task.get("name") == "Apply the TMDB Secret through stdin without writing a remote credential file")
+timestamp_task = next(task for task in deployment["tasks"] if task.get("name") == "Choose a new application rollout timestamp for this deployment")
 assert secret_task["no_log"] and key_guard["no_log"]
 configs_path = REPO / "kubernetes/config/application.yaml"
 configmaps = {obj["metadata"]["name"]: obj for obj in yaml.safe_load_all(configs_path.read_text())}
@@ -66,9 +67,24 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             {"block": [copy.deepcopy(guard)], "rescue": [{"ansible.builtin.set_fact": {"guard_accepted": False}}]},
             {"ansible.builtin.assert": {"that": f"guard_accepted == {accepted}"}},
         ]})
+    checks.append(copy.deepcopy(timestamp_task))
+    checks.append({"name": "Save the first deployment timestamp", "ansible.builtin.set_fact": {
+        "first_deploy_timestamp": "{{ application_deploy_timestamp }}",
+    }})
     checks.append({"name": "Render real application templates", "ansible.builtin.template": {
         "src": str(REPO / "kubernetes/services") + "/{{ item }}.yaml.j2",
         "dest": str(output) + "/{{ item }}.yaml",
+    }, "loop": APPS})
+    checks.append(copy.deepcopy(timestamp_task))
+    checks.append({"name": "Require a fresh timestamp on a second deployment", "ansible.builtin.assert": {
+        "that": "application_deploy_timestamp != first_deploy_timestamp",
+    }})
+    checks.append({"name": "Prepare the second deployment fixture", "ansible.builtin.file": {
+        "path": str(output / "second"), "state": "directory",
+    }})
+    checks.append({"name": "Render templates again with the same tag and configuration", "ansible.builtin.template": {
+        "src": str(REPO / "kubernetes/services") + "/{{ item }}.yaml.j2",
+        "dest": str(output / "second") + "/{{ item }}.yaml",
     }, "loop": APPS})
     checks.append({"name": "Render existing data worker volume template", "ansible.builtin.template": {
         "src": str(REPO / "kubernetes/storage/local-volumes.yaml.j2"), "dest": str(output / "local-volumes.yaml"),
@@ -91,6 +107,8 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     assert base64.b64decode(secret["data"]["TMDB_API_KEY"]).decode() == variables["tmdb_api_key"]
     assert variables["tmdb_api_key"] not in configs_path.read_text()
     compose = yaml.safe_load((REPO / "docker-compose.yml").read_text())["services"]
+    first_timestamp = None
+    second_timestamp = None
     for name in APPS:
         rendered = (output / f"{name}.yaml").read_text()
         assert variables["tmdb_api_key"] not in rendered
@@ -100,7 +118,18 @@ with tempfile.TemporaryDirectory() as temporary_directory:
         assert app["spec"]["replicas"] == 1 and app["spec"]["strategy"]["type"] == "Recreate"
         assert app["spec"]["selector"]["matchLabels"] == service["spec"]["selector"] == pod["metadata"]["labels"]
         assert container["image"] == variables["registry_image_prefix"] + f"/{name}:" + variables["application_image_tag"]
-        assert container["imagePullPolicy"] == "IfNotPresent"
+        assert container["imagePullPolicy"] == "Always"
+        second_app, second_service = list(yaml.safe_load_all((output / "second" / f"{name}.yaml").read_text()))
+        timestamp = pod["metadata"]["annotations"]["deployment/restarted-at"]
+        next_timestamp = second_app["spec"]["template"]["metadata"]["annotations"]["deployment/restarted-at"]
+        assert timestamp and timestamp != next_timestamp
+        first_timestamp = first_timestamp or timestamp
+        second_timestamp = second_timestamp or next_timestamp
+        assert timestamp == first_timestamp and next_timestamp == second_timestamp
+        # A same-tag redeployment must change the Pod template, without changing the Service or image.
+        comparable = copy.deepcopy(app)
+        comparable["spec"]["template"]["metadata"]["annotations"]["deployment/restarted-at"] = next_timestamp
+        assert comparable == second_app and service == second_service
         assert container["ports"][0]["containerPort"] == service["spec"]["ports"][0]["port"] == int(configmaps[name + "-config"]["data"]["SERVER_PORT"])
         assert service["spec"]["ports"][0]["targetPort"] == container["ports"][0]["name"] == "http"
         assert [entry["configMapRef"]["name"] for entry in container["envFrom"]] == ["application-common", name + "-config"]
@@ -121,6 +150,6 @@ with tempfile.TemporaryDirectory() as temporary_directory:
             assert reference["name"] == secret["metadata"]["name"] and reference["key"] in secret["data"]
             assert pod["metadata"]["annotations"]["checksum/tmdb"] == hashlib.sha256(variables["tmdb_api_key"].encode()).hexdigest()
     assert configmaps["application-common"]["data"]["MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED"] == "true"
-    print("PASS: 11 real guards, private Secret stdin, four templates/Compose contracts, probes, session strategy and configuration hashes.")
+    print("PASS: 11 real guards, private Secret stdin, four templates/Compose contracts, Always pulls and same-tag rollouts with a shared fresh timestamp.")
     if options.output:
         print("Rendered manifests kept for local integration; Secret contains a fake test key only.")

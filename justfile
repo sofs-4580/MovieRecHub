@@ -2,6 +2,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 export MANAGEMENT_UID := `id -u`
 export MANAGEMENT_GID := `id -g`
+export IMAGE_TAG := env("IMAGE_TAG", "v1")
 
 compose := "docker compose --env-file infra/management/.env -f infra/management/compose.yaml"
 images := "docker --config infra/management/.local/docker compose --env-file infra/management/.env -f infra/images/compose.yaml"
@@ -29,7 +30,7 @@ deploy:
     {{compose}} exec -T --workdir /workspace/infra/ansible management ansible-playbook databases.yml
     {{compose}} exec -T --workdir /workspace/infra/ansible management ansible-playbook deploy.yml -e @../management/.local/deployment.yml
 
-# Set IMAGE_TAG in this terminal before building, for example v1.
+# Build with the reusable v1 tag by default; override through IMAGE_TAG if needed.
 images-build:
     {{images}} build
 

@@ -18,12 +18,13 @@ spec:
         app: frontend
       annotations:
         checksum/config: "{{ application_config_checksum }}"
+        deployment/restarted-at: "{{ application_deploy_timestamp }}"
     spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
           image: "{{ registry_image_prefix }}/frontend:{{ application_image_tag }}"
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080
