@@ -1,0 +1,49 @@
+# https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+
+global:
+  # How frequently to scrape targets by default.
+  scrape_interval: 15s
+
+  # How long until a scrape request times out.
+  # It cannot be greater than the scrape interval.
+  scrape_timeout: 10s
+
+  # How frequently to evaluate rules.
+  evaluation_interval: 15s
+
+  # The labels to add to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  # Environment variable references `${var}` or `$var` are replaced according
+  # to the values of the current environment variables.
+  # References to undefined variables are replaced by the empty string.
+  # The `$` character can be escaped by using `$$`.
+  external_labels:
+      project: movie-rec-hub
+      environment: local
+
+# Rule files specifies a list of globs. Rules and alerts are read from
+# all matching files.
+rule_files: [] #todo
+
+# A list of scrape configurations.
+scrape_configs:
+  # Spring Boot services expose metrics through Micrometer at /actuator/prometheus.
+  - job_name: spring-services
+    metrics_path: /actuator/prometheus
+    scheme: http
+    static_configs:
+      - targets: ["user-service:8081"]
+        labels:
+          service: user-service
+      - targets: ["profile-service:8082"]
+        labels:
+          service: profile-service
+      - targets: ["movie-service:8083"]
+        labels:
+          service: movie-service
+      - targets: ["recommendation-service:8084"]
+        labels:
+          service: recommendation-service
+      - targets: ["frontend:8080"]
+        labels:
+          service: frontend
