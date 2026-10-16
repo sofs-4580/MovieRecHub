@@ -41,4 +41,15 @@ class LlmAnswersTest {
     assertEquals(
         List.of(1L, 2L, 3L, 4L, 5L), LlmAnswer.parseIds("{\"ids\":[1,2,3,4,5]}", CATALOGUE, 5));
   }
+
+  @Test
+  void skipsNonNumericIds() {
+    String json = "{\"count\":5,\"ids\":[\"abc\",1,null,2]}";
+    assertEquals(List.of(1L, 2L), LlmAnswer.parseIds(json, CATALOGUE, 5));
+  }
+
+  @Test
+  void countBelowOneStillGivesOneMovie() {
+    assertEquals(List.of(1L), LlmAnswer.parseIds("{\"count\":0,\"ids\":[1,2,3]}", CATALOGUE, 5));
+  }
 }
