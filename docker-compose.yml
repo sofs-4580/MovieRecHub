@@ -92,7 +92,18 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
-    # first run: docker compose exec ollama ollama pull hf.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
+
+  ollama-pull:
+    image: ollama/ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-hf.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M}
+      RECO_LOG_LEVEL: ${RECO_LOG_LEVEL:-INFO}
+    entrypoint: ["sh", "-c", "ollama pull $$LLM_MODEL"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
 
   recommendation-service:
     build:
@@ -103,7 +114,7 @@ services:
       DB_PASSWORD: ""
       MOVIE_SERVICE_URL: http://movie-service:8083
       OLLAMA_URL: http://ollama:11434
-      LLM_MODEL: hf.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M
+      LLM_MODEL: ${LLM_MODEL:-hf.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M}
     ports:
       - "127.0.0.1:${RECOMMENDATION_SERVICE_PORT:-8084}:8084"
     depends_on:

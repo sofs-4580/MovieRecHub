@@ -4,6 +4,7 @@ services:
     environment:
       POSTGRES_DB: movie_rec_hub_recommendations
       POSTGRES_USER: reco_service
+      RECO_LOG_LEVEL: ${RECO_LOG_LEVEL:-INFO}
       # Local development: connections do not require a password.
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
@@ -16,15 +17,5 @@ services:
       timeout: 5s
       retries: 10
 
-  ollama:
-    image: ollama/ollama
-    container_name: reco-ollama
-    ports:
-      - "127.0.0.1:11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    restart: unless-stopped
-
 volumes:
   reco-db-data:
-  ollama-data:
