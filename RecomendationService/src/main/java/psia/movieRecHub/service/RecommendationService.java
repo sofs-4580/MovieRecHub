@@ -72,6 +72,7 @@ public class RecommendationService {
         movies.stream().collect(Collectors.toMap(MovieDoc::id, Function.identity()));
 
     try {
+      log.debug("Prompt sent to the LLM:\n{}", user);
       String json = llm.generateJson(system, user, schema);
       log.info("LLM raw answer: {}", json);
 
