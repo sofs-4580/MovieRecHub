@@ -16,6 +16,7 @@ import psia.movieRecHub.engine.Hash;
 import psia.movieRecHub.engine.LlmAnswer;
 import psia.movieRecHub.engine.LlmPrompts;
 import psia.movieRecHub.engine.MovieDoc;
+import psia.movieRecHub.engine.UserTaste;
 import psia.movieRecHub.exceptions.LlmUnavailableException;
 
 @Service
@@ -38,10 +39,13 @@ public class RecommendationService {
   }
 
   // prompt texto livre e llm recomenda no momento
-  public RecommendationResultDto ask(String text) {
+  public RecommendationResultDto ask(String text, UserTaste taste) {
     List<MovieDoc> movies = catalogue.movies();
     return recommend(
-        movies, LlmPrompts.askSystem(), LlmPrompts.askUser(text, movies), LlmPrompts.ASK_SCHEMA);
+        movies,
+        LlmPrompts.askSystem(),
+        LlmPrompts.askUser(text, taste.tasteText(), taste.knownMovieIds(), movies),
+        LlmPrompts.ASK_SCHEMA);
   }
 
   // recomendacoes qundo o user entra na aplicacao

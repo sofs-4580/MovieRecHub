@@ -2,6 +2,7 @@ package psia.movieRecHub.controller;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -50,7 +51,15 @@ public class RecommendationController {
     if (request == null || request.text() == null || request.text().isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "text is required");
     }
-    return service.ask(request.text());
+    UserTaste taste = new UserTaste("", Set.of());
+    if (userId != null) {
+      try {
+        taste = tasteService.load(userId);
+      } catch (RuntimeException e) {
+        // o pedido escrito tem de funcionar mesmo sem o gosto
+      }
+    }
+    return service.ask(request.text(), taste);
   }
 
   @GetMapping
