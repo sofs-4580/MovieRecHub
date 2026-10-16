@@ -39,9 +39,9 @@ resource "google_artifact_registry_repository" "images" {
   description   = "Movie Rec Hub application images"
   format        = "DOCKER"
 
-  # A published version must never silently point to a different build.
+  # Development workflow: republish the same tag, then redeploy the applications.
   docker_config {
-    immutable_tags = true
+    immutable_tags = false
   }
 
   # Avoid enabling the separately billed scanning feature for this lab deployment.

@@ -1,11 +1,11 @@
-package psia.movieRecHub.dto;
+package psia.movieRecHub.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 
 @JsonIgnoreProperties(
     ignoreUnknown = true) // pra ignorar os camps q o movie service tenha e n usemos
-public record MovieResponse(
+public record MovieResponseDto(
     Long id,
     String title,
     Integer releaseYear,

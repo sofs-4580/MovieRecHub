@@ -117,19 +117,20 @@ O registry guarda as imagens no teu projeto e é independente das VMs. Depois sa
 exit
 ```
 
+Se o registry foi criado com a configuração anterior (tags imutáveis), executar este `plan`/`apply` uma vez para passar a permitir substituir a mesma tag. A mudança atualiza o registry existente; não é necessário recriar as VMs.
+
 ### Publicar as quatro imagens — no computador
 
 Na raiz de `g34/`, com o contentor de gestão ainda iniciado:
 
 ```bash
-export IMAGE_TAG=v1
 just images-build
 just images-login
 just images-push
 just images-pull
 ```
 
-Se as quatro imagens dessa versão já estiverem publicadas com o código pretendido, saltar este passo. Para publicar código alterado, usar uma nova tag (`v2`, `v3`, etc.) e atualizar também `application_image_tag` no ficheiro local e `registry_check_tag` no teste da secção 3. As tags publicadas são imutáveis. A publicação requer Docker Engine API 1.46+ (Docker 27+).
+O justfile usa `v1` por defeito. Para publicar código alterado, repetir estes comandos com a mesma tag; não é preciso mudar `application_image_tag`. Para escolher outra tag, executar `export IMAGE_TAG=OUTRA_TAG` antes e usar o mesmo valor no ficheiro local e no teste da secção 3. Se as imagens atuais já estiverem publicadas, saltar este passo. A publicação requer Docker Engine API 1.46+ (Docker 27+).
 
 Com estes pré-requisitos preparados, seguir as secções 1–4 para criar as VMs, instalar Kubernetes e fazer deployment.
 
@@ -185,6 +186,10 @@ Instala as três BDs e depois as quatro aplicações. Abrir no browser o endere�
 
 Se as VMs e o cluster já estiverem prontos e o inventário estiver atualizado, basta executar `just start` e `just deploy`. Se algum comando falhar, resolver o erro antes de avançar.
 
+Se surgir `Connection refused` por SSH, confirmar as VMs dentro de `just mgmt` com `gcloud compute instances list`. Depois de `terraform destroy`, o ficheiro de inventário pode continuar a existir com IPs antigos: repetir as secções 2–3, incluindo a geração do inventário, antes de `just deploy`. O comando não recria VMs nem Kubernetes.
+
+Se surgir `REMOTE HOST IDENTIFICATION HAS CHANGED` após recriar VMs, confirmar primeiro que o IP e a nova identidade SSH pertencem à VM correta. Depois, dentro do contentor, remover apenas a entrada antiga com `ssh-keygen -f ~/.ssh/known_hosts -R IP_DA_VM` (substituir pelo IP confirmado) e repetir `ansible-playbook cluster.yml` em `/workspace/infra/ansible`. O playbook pode esperar até cinco minutos em `Wait for SSH and Python` antes de apresentar esse erro. Não é necessário substituir o teu par de chaves SSH.
+
 ### O que o `just deploy` faz por dentro
 
 É um atalho definido no `justfile`. Usa Docker Compose para executar Ansible no contentor de gestão, na pasta `/workspace/infra/ansible`. O Ansible liga às VMs por SSH, usando o inventário gerado pelo Terraform, e aplica os manifests através de `kubectl` no control plane. Os serviços ficam a correr no cluster cloud; o contentor local apenas executa as ferramentas.
@@ -193,7 +198,7 @@ A sequência é:
 
 1. **Verificar os ficheiros locais:** confirma que o inventário `infra/gcp/ansible-inventory.json` e a configuração `infra/management/.local/deployment.yml` existem e são legíveis.
 2. **Executar `databases.yml`:** verifica a montagem do disco de dados, prepara uma pasta por BD e aplica o namespace `movie-rec-hub`, armazenamento persistente, Services internos e StatefulSets das três BDs. Espera pelas BDs e volumes prontos e testa uma ligação SQL através de cada Service. Reaplicar conserva os dados existentes.
-3. **Executar `deploy.yml`:** lê a tag e a chave TMDB do ficheiro local, valida o cluster/BDs e a disponibilidade da porta 30510, aplica ConfigMaps e o Secret TMDB, preenche os templates com o registry/tag pessoais e aplica os Deployments e Services das quatro aplicações. Kubernetes usa as imagens publicadas para executar os Pods e os Services para permitir a comunicação.
+3. **Executar `deploy.yml`:** lê a tag e a chave TMDB do ficheiro local, valida o cluster/BDs e a disponibilidade da porta 30510, aplica ConfigMaps e o Secret TMDB, preenche os templates com o registry/tag pessoais e aplica os Deployments e Services das quatro aplicações. Cada execução gera uma nova identificação nos templates para recriar os Pods, mesmo quando a tag é a mesma. Com `imagePullPolicy: Always`, cada novo container consulta a imagem atual no registry, reutilizando as camadas em cache que não mudaram. Os Services permitem a comunicação entre aplicações.
 4. **Confirmar o arranque:** espera pelas quatro aplicações prontas, verifica a saúde do frontend e a página de login pelo IP público de cada worker e apresenta o endereço para abrir no browser. Estas verificações não substituem os testes funcionais de contas, perfis e filmes.
 
 Os dois comandos Ansible executados dentro do contentor são:
@@ -204,6 +209,19 @@ ansible-playbook deploy.yml -e @../management/.local/deployment.yml
 ```
 
 Só avança para a segunda etapa se a primeira terminar com sucesso. Se falhar, interrompe e mantém os recursos já aplicados para diagnóstico. Não cria VMs, instala Kubernetes, constrói/publica imagens ou inclui RecommendationService; essas preparações são feitas nas etapas anteriores.
+
+### Atualizar a aplicação com a mesma tag
+
+Com o registry atualizado, as VMs/cluster prontos, o contentor de gestão iniciado e login válido, executar no computador, na raiz de `g34/`:
+
+```bash
+just images-build
+just images-login
+just images-push
+just deploy
+```
+
+O valor da tag de build (por defeito `v1`) deve coincidir com `application_image_tag` no ficheiro local. A publicação sozinha não atualiza os Pods em execução: `just deploy` provoca a atualização. Cada deployment recria os quatro Pods das aplicações; as BDs não são reiniciadas nem apagadas pelo novo mecanismo. Com uma réplica/Recreate haverá uma interrupção durante a atualização, e reiniciar UserService perde as sessões em memória. Não é possível recuperar uma versão antiga apenas pelo nome de uma tag que entretanto foi substituída.
 
 ## 5. Terminar o teste e remover os recursos cloud
 

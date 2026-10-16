@@ -103,7 +103,7 @@ services:
       DB_PASSWORD: ""
       MOVIE_SERVICE_URL: http://movie-service:8083
       OLLAMA_URL: http://ollama:11434
-      LLM_MODEL: hf.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
+      LLM_MODEL: hf.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M
     ports:
       - "127.0.0.1:${RECOMMENDATION_SERVICE_PORT:-8084}:8084"
     depends_on:
