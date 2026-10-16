@@ -1,0 +1,10 @@
+﻿apiVersion: 1
+
+providers:
+  - name: movie-rec-hub
+    folder: Movie Rec Hub
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
