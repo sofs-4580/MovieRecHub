@@ -15,6 +15,8 @@ import psia.movieRecHub.client.ApiException;
 import psia.movieRecHub.client.MovieServiceClient;
 import psia.movieRecHub.client.MovieServiceException;
 import psia.movieRecHub.client.ProfileServiceClient;
+import psia.movieRecHub.client.RecommendationServiceClient;
+import psia.movieRecHub.client.RecommendationServiceException;
 import psia.movieRecHub.config.CurrentUser;
 import psia.movieRecHub.dto.MovieGenre;
 import psia.movieRecHub.dto.OwnProfileDto;
@@ -30,12 +32,20 @@ public class ProfileWebController {
   private final ProfileServiceClient profiles;
   private final MovieServiceClient movieClient;
   private final CurrentUser currentUser;
+  private final RecommendationServiceClient recommendation;
+
+  private static final org.slf4j.Logger log =
+      org.slf4j.LoggerFactory.getLogger(ProfileWebController.class);
 
   public ProfileWebController(
-      ProfileServiceClient profiles, MovieServiceClient movieClient, CurrentUser currentUser) {
+      ProfileServiceClient profiles,
+      MovieServiceClient movieClient,
+      CurrentUser currentUser,
+      RecommendationServiceClient recommendation) {
     this.profiles = profiles;
     this.movieClient = movieClient;
     this.currentUser = currentUser;
+    this.recommendation = recommendation;
   }
 
   // ---------- browse other people ----------
@@ -141,6 +151,7 @@ public class ProfileWebController {
       current.favoriteDecades().stream().filter(d -> !DECADES.contains(d)).forEach(decades::add);
       try {
         profiles.updateOwn(sessionId, displayName.trim(), bio, genres, decades);
+        pushToRecommendations(me, genres, decades);
         ra.addFlashAttribute("message", "Profile saved.");
         return "redirect:/profile";
       } catch (ApiException ex) {
@@ -160,5 +171,16 @@ public class ProfileWebController {
     model.addAttribute("genres", MovieGenre.values());
     model.addAttribute("decades", new ArrayList<>(DECADES));
     return "my-profile";
+  }
+
+  private void pushToRecommendations(Long userId, Set<MovieGenre> genres, Set<Integer> decades) {
+    try {
+      Set<String> names = new HashSet<>();
+      genres.forEach(g -> names.add(g.name()));
+      recommendation.saveProfile(userId, names, decades);
+    } catch (RecommendationServiceException ex) {
+      // gravar o perfil nao pode falhar por causa das recomendacoes.
+      log.warn("Could not send the profile to RecommendationService: {}", ex.getMessage());
+    }
   }
 }

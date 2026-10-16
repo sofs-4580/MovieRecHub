@@ -20,10 +20,6 @@ import psia.movieRecHub.dto.response.MovieListDetailDto;
 import psia.movieRecHub.dto.response.MovieListSummaryDto;
 import psia.movieRecHub.service.MovieListService;
 
-/**
- * O utilizador autenticado vem no header X-User-Id (TODO: substituir por token/gateway quando o
- * UserService estiver integrado). Nos GET e opcional: sem ele so se veem listas publicas.
- */
 @RestController
 @RequestMapping("/api/lists")
 public class MovieListController {

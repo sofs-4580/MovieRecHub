@@ -51,7 +51,7 @@ public class AuthWebController {
         response.addHeader(HttpHeaders.SET_COOKIE, cookie);
       }
       ra.addFlashAttribute("message", "Welcome back, " + result.username() + "!");
-      return "redirect:/movies";
+      return "redirect:/recommendations";
     } catch (ApiException ex) {
       model.addAttribute("error", ex.getMessage());
       model.addAttribute("formUsername", name);

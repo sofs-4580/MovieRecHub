@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>For you — Movie Recommendation Hub</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+<div class="layout">
+
+    <aside th:replace="~{fragments/layout :: sidebar('recommendations')}"></aside>
+
+    <main class="main">
+        <h1 class="page-title">For you</h1>
+
+        <div th:replace="~{fragments/layout :: alerts}"></div>
+
+        <!-- pedido em texto livre -->
+        <h2 class="section-title">Ask for a recommendation</h2>
+        <form th:action="@{/recommendations}" method="post" class="panel form-row"
+              onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Thinking…';">
+            <input type="text" name="text" maxlength="300" class="input input-grow"
+                   th:value="${askText}" placeholder="e.g. a horror movie from the 80s" required/>
+            <button type="submit" class="btn">Ask</button>
+        </form>
+
+        <th:block th:if="${answer != null}">
+            <h2 class="section-title">Your request</h2>
+            <p class="muted small" th:if="${answer.source() == 'FALLBACK'}">
+                The AI model is not available right now, so these are the top rated movies.
+            </p>
+            <div th:replace="~{fragments/layout :: recoGrid(${answer.items()})}"></div>
+            <p class="empty" th:if="${answer.items() == null or #lists.isEmpty(answer.items())}">No movies found.</p>
+        </th:block>
+
+        <!-- recomendacoes preparadas em segundo plano -->
+        <h2 class="section-title">Recommended for you</h2>
+        <p class="empty" th:if="${forYouError != null}" th:text="${forYouError}">Unavailable</p>
+        <p class="empty" th:if="${forYou != null and (forYou.items() == null or #lists.isEmpty(forYou.items()))}">
+            We are still preparing your recommendations. Add movies to your lists, write reviews
+            or choose your favourite genres in your profile, and check back in a few minutes.
+        </p>
+        <div th:if="${forYou != null}" th:replace="~{fragments/layout :: recoGrid(${forYou.items()})}"></div>
+    </main>
+
+</div>
+</body>
+</html>

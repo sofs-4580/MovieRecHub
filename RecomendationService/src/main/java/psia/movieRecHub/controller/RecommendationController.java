@@ -2,9 +2,17 @@ package psia.movieRecHub.controller;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import psia.movieRecHub.dto.request.AskRequestDto;
 import psia.movieRecHub.dto.request.ProfileRequestDto;
@@ -43,20 +51,21 @@ public class RecommendationController {
     if (request == null || request.text() == null || request.text().isBlank()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "text is required");
     }
-    return service.ask(request.text());
+    UserTaste taste = new UserTaste("", Set.of());
+    if (userId != null) {
+      try {
+        taste = tasteService.load(userId);
+      } catch (RuntimeException e) {
+        // o pedido escrito tem de funcionar mesmo sem o gosto
+      }
+    }
+    return service.ask(request.text(), taste);
   }
 
   @GetMapping
   public RecommendationResultDto getCache(@RequestHeader("X-User-Id") Long userId) {
     knownUserService.register(userId);
     return cacheService.find(userId).orElse(new RecommendationResultDto("PENDING", List.of()));
-  }
-
-  /** Provisório, para testar a cache à mão. O agente vai substituir isto. */
-  @PostMapping("/users/{userId}/refresh")
-  public RecommendationResultDto refresh(
-      @PathVariable Long userId, @RequestBody AskRequestDto request) {
-    return service.refreshFor(userId, request.text());
   }
 
   // novo campo + construtor: private final UserSignalsService signalsService;

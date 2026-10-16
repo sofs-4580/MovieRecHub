@@ -3,6 +3,7 @@ package psia.movieRecHub.service;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import psia.movieRecHub.engine.Hash;
 import psia.movieRecHub.engine.LlmAnswer;
 import psia.movieRecHub.engine.LlmPrompts;
 import psia.movieRecHub.engine.MovieDoc;
+import psia.movieRecHub.engine.UserTaste;
 import psia.movieRecHub.exceptions.LlmUnavailableException;
 
 @Service
@@ -37,22 +39,27 @@ public class RecommendationService {
   }
 
   // prompt texto livre e llm recomenda no momento
-  public RecommendationResultDto ask(String text) {
+  public RecommendationResultDto ask(String text, UserTaste taste) {
     List<MovieDoc> movies = catalogue.movies();
     return recommend(
-        movies, LlmPrompts.askSystem(), LlmPrompts.askUser(text, movies), LlmPrompts.ASK_SCHEMA);
+        movies,
+        LlmPrompts.askSystem(),
+        LlmPrompts.askUser(text, taste.tasteText(), taste.knownMovieIds(), movies),
+        LlmPrompts.ASK_SCHEMA);
   }
 
   // recomendacoes qundo o user entra na aplicacao
-  public RecommendationResultDto refreshFor(Long userId, String tastePrompt) {
+  public RecommendationResultDto refreshFor(Long userId, String tastePrompt, Set<Long> seen) {
     List<MovieDoc> movies = catalogue.movies();
     RecommendationResultDto result =
         recommend(
             movies,
             LlmPrompts.tasteSystem(),
-            LlmPrompts.tasteUser(tastePrompt, movies),
+            LlmPrompts.tasteUser(tastePrompt, seen, movies),
             LlmPrompts.TASTE_SCHEMA);
-    cacheService.saveRecommendationCache(userId, result, Hash.sha256(tastePrompt));
+    if ("LLM".equals(result.source())) {
+      cacheService.saveRecommendationCache(userId, result, Hash.sha256(tastePrompt));
+    }
     return result;
   }
 
