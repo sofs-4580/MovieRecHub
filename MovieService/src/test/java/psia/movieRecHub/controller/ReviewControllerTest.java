@@ -13,14 +13,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.LocalDateTime;
 import java.util.List;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-
 import psia.movieRecHub.dto.request.ReviewRequestDto;
 import psia.movieRecHub.dto.response.ReviewResponseDto;
 import psia.movieRecHub.exceptions.DuplicateReviewException;
@@ -32,134 +30,183 @@ import psia.movieRecHub.service.ReviewService;
 @WebMvcTest(ReviewController.class)
 class ReviewControllerTest {
 
-	@Autowired
-	private MockMvc mockMvc;
+  @Autowired private MockMvc mockMvc;
 
-	@MockBean
-	private ReviewService reviewService;
+  @MockitoBean private ReviewService reviewService;
 
-//POST /api/reviews
+  // POST /api/reviews
 
-	@Test
-	void createReview() throws Exception {
-		ReviewResponseDto saved = new ReviewResponseDto(10L, 2L, 1L, 4, "bom", LocalDateTime.of(2026, 1, 15, 21, 30));
-		when(reviewService.createReview(any(ReviewRequestDto.class))).thenReturn(saved);
+  @Test
+  void createReview() throws Exception {
+    ReviewResponseDto saved =
+        new ReviewResponseDto(10L, 2L, 1L, 4, "bom", LocalDateTime.of(2026, 1, 15, 21, 30));
+    when(reviewService.createReview(any(ReviewRequestDto.class))).thenReturn(saved);
 
-		mockMvc.perform(post("/api/reviews").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"userId\": 2, \"movieId\": 1, \"rating\": 4, \"comment\": \"bom\"}"))
-				.andExpect(status().isCreated()).andExpect(jsonPath("$.id").value(10))
-				.andExpect(jsonPath("$.userId").value(2)).andExpect(jsonPath("$.movieId").value(1))
-				.andExpect(jsonPath("$.rating").value(4)).andExpect(jsonPath("$.comment").value("bom"))
-				.andExpect(jsonPath("$.createdAt").exists());
-	}
+    mockMvc
+        .perform(
+            post("/api/reviews")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\": 2, \"movieId\": 1, \"rating\": 4, \"comment\": \"bom\"}"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.id").value(10))
+        .andExpect(jsonPath("$.userId").value(2))
+        .andExpect(jsonPath("$.movieId").value(1))
+        .andExpect(jsonPath("$.rating").value(4))
+        .andExpect(jsonPath("$.comment").value("bom"))
+        .andExpect(jsonPath("$.createdAt").exists());
+  }
 
-	@Test
-	void createReviewWithBlankComment() throws Exception {
-		mockMvc.perform(post("/api/reviews").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"userId\": 2, \"movieId\": 1, \"rating\": 4, \"comment\": \"   \"}"))
-				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.detail").value("Validation failed"));
+  @Test
+  void createReviewWithBlankComment() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/reviews")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\": 2, \"movieId\": 1, \"rating\": 4, \"comment\": \"   \"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.detail").value("Validation failed"));
 
-		// nem chega ao service
-		verifyNoInteractions(reviewService);
-	}
+    // nem chega ao service
+    verifyNoInteractions(reviewService);
+  }
 
-	@Test
-	void createReviewWithoutComment() throws Exception {
-		mockMvc.perform(post("/api/reviews").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"userId\": 2, \"movieId\": 1, \"rating\": 4}")).andExpect(status().isBadRequest());
+  @Test
+  void createReviewWithoutComment() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/reviews")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\": 2, \"movieId\": 1, \"rating\": 4}"))
+        .andExpect(status().isBadRequest());
 
-		verifyNoInteractions(reviewService);
-	}
+    verifyNoInteractions(reviewService);
+  }
 
-	@Test
-	void createReviewWithoutUserId() throws Exception {
-		mockMvc.perform(post("/api/reviews").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"movieId\": 1, \"rating\": 4, \"comment\": \"bom\"}")).andExpect(status().isBadRequest());
+  @Test
+  void createReviewWithoutUserId() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/reviews")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"movieId\": 1, \"rating\": 4, \"comment\": \"bom\"}"))
+        .andExpect(status().isBadRequest());
 
-		verifyNoInteractions(reviewService);
-	}
+    verifyNoInteractions(reviewService);
+  }
 
-	@Test
-	void createReviewWithoutMovieId() throws Exception {
-		mockMvc.perform(post("/api/reviews").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"userId\": 2, \"rating\": 4, \"comment\": \"bom\"}")).andExpect(status().isBadRequest());
+  @Test
+  void createReviewWithoutMovieId() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/reviews")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\": 2, \"rating\": 4, \"comment\": \"bom\"}"))
+        .andExpect(status().isBadRequest());
 
-		verifyNoInteractions(reviewService);
-	}
+    verifyNoInteractions(reviewService);
+  }
 
-	@Test
-	void createReviewNonExistingMovie() throws Exception {
-		when(reviewService.createReview(any(ReviewRequestDto.class))).thenThrow(new MovieNotFoundException(99L));
+  @Test
+  void createReviewNonExistingMovie() throws Exception {
+    when(reviewService.createReview(any(ReviewRequestDto.class)))
+        .thenThrow(new MovieNotFoundException(99L));
 
-		mockMvc.perform(post("/api/reviews").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"userId\": 2, \"movieId\": 99, \"rating\": 4, \"comment\": \"bom\"}"))
-				.andExpect(status().isNotFound()).andExpect(jsonPath("$.errorCode").value("MOVIE_ERR_001"));
-	}
+    mockMvc
+        .perform(
+            post("/api/reviews")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\": 2, \"movieId\": 99, \"rating\": 4, \"comment\": \"bom\"}"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.errorCode").value("MOVIE_ERR_001"));
+  }
 
-	@Test
-	void createReviewTwice() throws Exception {
-		when(reviewService.createReview(any(ReviewRequestDto.class))).thenThrow(new DuplicateReviewException(2L, 1L));
+  @Test
+  void createReviewTwice() throws Exception {
+    when(reviewService.createReview(any(ReviewRequestDto.class)))
+        .thenThrow(new DuplicateReviewException(2L, 1L));
 
-		mockMvc.perform(post("/api/reviews").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"userId\": 2, \"movieId\": 1, \"rating\": 5, \"comment\": \"outra vez\"}"))
-				.andExpect(status().isConflict()).andExpect(jsonPath("$.detail").value("Duplicate review"))
-				.andExpect(jsonPath("$.errorCode").value("REVIEW_ERR_002"));
-	}
+    mockMvc
+        .perform(
+            post("/api/reviews")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"userId\": 2, \"movieId\": 1, \"rating\": 5, \"comment\": \"outra vez\"}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.detail").value("Duplicate review"))
+        .andExpect(jsonPath("$.errorCode").value("REVIEW_ERR_002"));
+  }
 
-//GET
+  // GET
 
-	@Test
-	void getReviewsByMovie() throws Exception {
-		ReviewResponseDto rev1 = new ReviewResponseDto(10L, 2L, 1L, 4, "bom", LocalDateTime.of(2026, 1, 15, 21, 30));
-		ReviewResponseDto rev2 = new ReviewResponseDto(11L, 3L, 1L, 5, "otimo", LocalDateTime.of(2026, 1, 14, 21, 30));
-		when(reviewService.getReviewsByMovie(1L)).thenReturn(List.of(rev1, rev2));
+  @Test
+  void getReviewsByMovie() throws Exception {
+    ReviewResponseDto rev1 =
+        new ReviewResponseDto(10L, 2L, 1L, 4, "bom", LocalDateTime.of(2026, 1, 15, 21, 30));
+    ReviewResponseDto rev2 =
+        new ReviewResponseDto(11L, 3L, 1L, 5, "otimo", LocalDateTime.of(2026, 1, 14, 21, 30));
+    when(reviewService.getReviewsByMovie(1L)).thenReturn(List.of(rev1, rev2));
 
-		mockMvc.perform(get("/api/reviews/movie/1")).andExpect(status().isOk())
-				.andExpect(jsonPath("$.length()").value(2)).andExpect(jsonPath("$[0].id").value(10))
-				.andExpect(jsonPath("$[0].rating").value(4)).andExpect(jsonPath("$[1].id").value(11));
-	}
+    mockMvc
+        .perform(get("/api/reviews/movie/1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(2))
+        .andExpect(jsonPath("$[0].id").value(10))
+        .andExpect(jsonPath("$[0].rating").value(4))
+        .andExpect(jsonPath("$[1].id").value(11));
+  }
 
-	@Test
-	void getReviewsMovieWithoutReviews() throws Exception {
-		when(reviewService.getReviewsByMovie(1L)).thenReturn(List.of());
+  @Test
+  void getReviewsMovieWithoutReviews() throws Exception {
+    when(reviewService.getReviewsByMovie(1L)).thenReturn(List.of());
 
-		mockMvc.perform(get("/api/reviews/movie/1")).andExpect(status().isOk())
-				.andExpect(jsonPath("$.length()").value(0));
-	}
+    mockMvc
+        .perform(get("/api/reviews/movie/1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(0));
+  }
 
-	@Test
-	void getReviewsByUser() throws Exception {
-		ReviewResponseDto rev1 = new ReviewResponseDto(10L, 2L, 1L, 4, "bom", LocalDateTime.of(2026, 1, 15, 21, 30));
-		when(reviewService.getReviewsByUser(2L)).thenReturn(List.of(rev1));
+  @Test
+  void getReviewsByUser() throws Exception {
+    ReviewResponseDto rev1 =
+        new ReviewResponseDto(10L, 2L, 1L, 4, "bom", LocalDateTime.of(2026, 1, 15, 21, 30));
+    when(reviewService.getReviewsByUser(2L)).thenReturn(List.of(rev1));
 
-		mockMvc.perform(get("/api/reviews/user/2")).andExpect(status().isOk())
-				.andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].userId").value(2));
-	}
+    mockMvc
+        .perform(get("/api/reviews/user/2"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].userId").value(2));
+  }
 
-//DELETE /api/reviews/{id}
+  // DELETE /api/reviews/{id}
 
-	@Test
-	void deleteReview() throws Exception {
-		mockMvc.perform(delete("/api/reviews/10")).andExpect(status().isNoContent());
+  @Test
+  void deleteReview() throws Exception {
+    mockMvc.perform(delete("/api/reviews/10")).andExpect(status().isNoContent());
 
-		verify(reviewService).deleteReview(10L);
-	}
+    verify(reviewService).deleteReview(10L);
+  }
 
-	@Test
-	void deleteReviewThatDoesNotExist() throws Exception {
-		doThrow(new ReviewNotFoundException(99L)).when(reviewService).deleteReview(99L);
+  @Test
+  void deleteReviewThatDoesNotExist() throws Exception {
+    doThrow(new ReviewNotFoundException(99L)).when(reviewService).deleteReview(99L);
 
-		mockMvc.perform(delete("/api/reviews/99")).andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.detail").value("Review not found"))
-				.andExpect(jsonPath("$.errorCode").value("REVIEW_ERR_001"));
-	}
+    mockMvc
+        .perform(delete("/api/reviews/99"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.detail").value("Review not found"))
+        .andExpect(jsonPath("$.errorCode").value("REVIEW_ERR_001"));
+  }
 
-//pedidos invalidos - 400
+  // pedidos invalidos - 400
 
-	@Test
-	void createReviewRatingOutOfRange() throws Exception {
-		mockMvc.perform(post("/api/reviews").contentType(MediaType.APPLICATION_JSON)
-				.content("{\"userId\": 2, \"movieId\": 1, \"rating\": 6, \"comment\": \"bom\"}"))
-				.andExpect(status().isBadRequest());
-	}
+  @Test
+  void createReviewRatingOutOfRange() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/reviews")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\": 2, \"movieId\": 1, \"rating\": 6, \"comment\": \"bom\"}"))
+        .andExpect(status().isBadRequest());
+  }
 }

@@ -1,7 +1,6 @@
 package psia.movieRecHub.controller;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +16,6 @@ import org.springframework.web.server.ResponseStatusException;
 import psia.movieRecHub.dto.request.AskRequestDto;
 import psia.movieRecHub.dto.request.ProfileRequestDto;
 import psia.movieRecHub.dto.response.RecommendationResultDto;
-import psia.movieRecHub.engine.Hash;
 import psia.movieRecHub.engine.UserTaste;
 import psia.movieRecHub.service.KnowUserService;
 import psia.movieRecHub.service.RecommendationCacheService;
@@ -66,17 +64,6 @@ public class RecommendationController {
   public RecommendationResultDto getCache(@RequestHeader("X-User-Id") Long userId) {
     knownUserService.register(userId);
     return cacheService.find(userId).orElse(new RecommendationResultDto("PENDING", List.of()));
-  }
-
-  // novo campo + construtor: private final UserSignalsService signalsService;
-
-  @GetMapping("/debug/signals/{userId}")
-  public Map<String, Object> debugSignals(@PathVariable Long userId) {
-    UserTaste s = tasteService.load(userId);
-    return Map.of(
-        "taste", s.tasteText(),
-        "hash", Hash.sha256(s.tasteText()),
-        "knownMovieIds", s.knownMovieIds());
   }
 
   @PutMapping("/users/{userId}/profile")
