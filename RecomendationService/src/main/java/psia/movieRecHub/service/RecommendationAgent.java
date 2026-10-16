@@ -63,7 +63,7 @@ public class RecommendationAgent {
         return false; // o gosto n mudou
       }
       log.info("Agent: generating recommendations for user {}", userId);
-      recommendationService.refreshFor(userId, taste.tasteText());
+      recommendationService.refreshFor(userId, taste.tasteText(), taste.knownMovieIds());
       return true;
     } catch (RuntimeException e) {
       log.warn("Agent: skipping user {}: {}", userId, e.getMessage());

@@ -3,6 +3,7 @@ package psia.movieRecHub.service;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -44,13 +45,13 @@ public class RecommendationService {
   }
 
   // recomendacoes qundo o user entra na aplicacao
-  public RecommendationResultDto refreshFor(Long userId, String tastePrompt) {
+  public RecommendationResultDto refreshFor(Long userId, String tastePrompt, Set<Long> seen) {
     List<MovieDoc> movies = catalogue.movies();
     RecommendationResultDto result =
         recommend(
             movies,
             LlmPrompts.tasteSystem(),
-            LlmPrompts.tasteUser(tastePrompt, movies),
+            LlmPrompts.tasteUser(tastePrompt, seen, movies),
             LlmPrompts.TASTE_SCHEMA);
     if ("LLM".equals(result.source())) {
       cacheService.saveRecommendationCache(userId, result, Hash.sha256(tastePrompt));
