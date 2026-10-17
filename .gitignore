@@ -63,6 +63,3 @@ mfput.log
 /infra/ansible/smoke-test.yml
 /infra/ansible/smoke-test-cleanup.yml
 /kubernetes/smoke-test/
-
-### Local infrastructure documentation ###
-/infra/README.md
