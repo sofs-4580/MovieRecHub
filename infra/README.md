@@ -1,13 +1,15 @@
 # Deployment na Google Cloud
 
-Instala frontend, UserService, ProfileService e MovieService, com as três bases de dados. RecommendationService/Ollama ficam excluídos.
+Instala frontend, UserService, ProfileService, MovieService e RecommendationService, com as quatro bases de dados e o Ollama (servidor do modelo de linguagem usado pelo RecommendationService).
+
+O cluster tem 1 control plane e 2 workers: o worker-1 corre as bases de dados e as aplicações, e o worker-2 corre o Ollama.
 
 ## Pré-requisitos
 
 - Docker com Compose e `just` instalados.
 - `infra/management/.env` preenchido com o teu `GCP_PROJECT_ID`.
 - Login Google válido, chave SSH e APIs/rede `default` já preparados.
-- Artifact Registry criado e as quatro imagens `v1` publicadas no teu projeto.
+- Artifact Registry criado e as cinco imagens `v1` publicadas no teu projeto.
 - `infra/management/.local/deployment.yml` preenchido com `application_image_tag: v1` e a chave API v3 em `tmdb_api_key`. Este ficheiro não vai para o Git.
 
 ## 0. Preparar os pré-requisitos
@@ -119,7 +121,7 @@ exit
 
 Se o registry foi criado com a configuração anterior (tags imutáveis), executar este `plan`/`apply` uma vez para passar a permitir substituir a mesma tag. A mudança atualiza o registry existente; não é necessário recriar as VMs.
 
-### Publicar as quatro imagens — no computador
+### Publicar as cinco imagens — no computador
 
 Na raiz de `g34/`, com o contentor de gestão ainda iniciado:
 
@@ -154,7 +156,7 @@ terraform validate
 terraform plan -out=deployment.tfplan
 ```
 
-Rever o plano antes de continuar. O `apply` cria recursos reais que consomem créditos:
+Rever o plano antes de continuar. O `apply` cria recursos reais que consomem créditos: com 2 workers `e2-standard-4` e o control plane, o cluster custa cerca de 0,36 USD por hora enquanto estiver ligado. O tipo de máquina dos workers está em `worker_machine_type` (`infra/gcp/variables.tf`); o Ollama precisa de 4 núcleos para responder a um pedido em cerca de 46 s (com `e2-medium` demorava cerca de 2 minutos).
 
 ```bash
 terraform apply deployment.tfplan
@@ -172,6 +174,8 @@ ansible-playbook registry-access.yml -e registry_check_tag=v1
 exit
 ```
 
+O `cluster.yml` prepara os dois workers e junta-os ao cluster. **Só se executa uma vez, com as VMs novas**: depois de as bases de dados estarem a correr falha na verificação do disco de dados, porque os Pods usam essa montagem. Para atualizar a aplicação usa `just deploy`. Para acrescentar um worker a um cluster existente, prepara o nó e usa `ansible-playbook create-cluster.yml join-workers.yml` num único comando.
+
 Se usares outra versão, substituir `v1` pela tag definida no ficheiro local. Se o Nginx de teste ainda ocupar a porta 30510, executar `ansible-playbook smoke-test-cleanup.yml` antes de sair do contentor.
 
 ## 4. Instalar a aplicação
@@ -182,11 +186,11 @@ De volta ao terminal do computador, na raiz de `g34/`:
 just deploy
 ```
 
-Instala as três BDs e depois as quatro aplicações. Abrir no browser o endereço apresentado: `http://IP_PUBLICO_DO_WORKER:30510/`.
+Instala as quatro BDs, o Ollama (que descarrega o modelo, cerca de 5 minutos) e depois as cinco aplicações. Abrir no browser o endereço apresentado: `http://IP_PUBLICO_DO_WORKER:30510/`.
 
 Se as VMs e o cluster já estiverem prontos e o inventário estiver atualizado, basta executar `just start` e `just deploy`. Se algum comando falhar, resolver o erro antes de avançar.
 
-Se surgir `Connection refused` por SSH, confirmar as VMs dentro de `just mgmt` com `gcloud compute instances list`. Depois de `terraform destroy`, o ficheiro de inventário pode continuar a existir com IPs antigos: repetir as secções 2–3, incluindo a geração do inventário, antes de `just deploy`. O comando não recria VMs nem Kubernetes.
+Se surgir `Connection refused` por SSH, confirmar as VMs dentro de `just mgmt` com `gcloud compute instances list`. Os IPs públicos das VMs mudam quando são recriadas, redimensionadas ou paradas e voltam a ligar-se: depois disso corre `terraform refresh` e regenera o inventário (`terraform output -json ansible_inventory > ansible-inventory.json`) antes de `just deploy`. Depois de `terraform destroy`, o ficheiro de inventário pode continuar a existir com IPs antigos: repetir as secções 2–3, incluindo a geração do inventário, antes de `just deploy`. O comando não recria VMs nem Kubernetes.
 
 Se surgir `REMOTE HOST IDENTIFICATION HAS CHANGED` após recriar VMs, confirmar primeiro que o IP e a nova identidade SSH pertencem à VM correta. Depois, dentro do contentor, remover apenas a entrada antiga com `ssh-keygen -f ~/.ssh/known_hosts -R IP_DA_VM` (substituir pelo IP confirmado) e repetir `ansible-playbook cluster.yml` em `/workspace/infra/ansible`. O playbook pode esperar até cinco minutos em `Wait for SSH and Python` antes de apresentar esse erro. Não é necessário substituir o teu par de chaves SSH.
 
@@ -197,9 +201,9 @@ Se surgir `REMOTE HOST IDENTIFICATION HAS CHANGED` após recriar VMs, confirmar 
 A sequência é:
 
 1. **Verificar os ficheiros locais:** confirma que o inventário `infra/gcp/ansible-inventory.json` e a configuração `infra/management/.local/deployment.yml` existem e são legíveis.
-2. **Executar `databases.yml`:** verifica a montagem do disco de dados, prepara uma pasta por BD e aplica o namespace `movie-rec-hub`, armazenamento persistente, Services internos e StatefulSets das três BDs. Espera pelas BDs e volumes prontos e testa uma ligação SQL através de cada Service. Reaplicar conserva os dados existentes.
-3. **Executar `deploy.yml`:** lê a tag e a chave TMDB do ficheiro local, valida o cluster/BDs e a disponibilidade da porta 30510, aplica ConfigMaps e o Secret TMDB, preenche os templates com o registry/tag pessoais e aplica os Deployments e Services das quatro aplicações. Cada execução gera uma nova identificação nos templates para recriar os Pods, mesmo quando a tag é a mesma. Com `imagePullPolicy: Always`, cada novo container consulta a imagem atual no registry, reutilizando as camadas em cache que não mudaram. Os Services permitem a comunicação entre aplicações.
-4. **Confirmar o arranque:** espera pelas quatro aplicações prontas, verifica a saúde do frontend e a página de login pelo IP público de cada worker e apresenta o endereço para abrir no browser. Estas verificações não substituem os testes funcionais de contas, perfis e filmes.
+2. **Executar `databases.yml`:** verifica a montagem do disco de dados, prepara uma pasta por BD e aplica o namespace `movie-rec-hub`, armazenamento persistente, Services internos e StatefulSets das quatro BDs (users-db, profiles-db, movie-db e reco-db). Espera pelas BDs e volumes prontos e testa uma ligação SQL através de cada Service. Reaplicar conserva os dados existentes.
+3. **Executar `deploy.yml`:** lê a tag e a chave TMDB do ficheiro local, valida o cluster/BDs e a disponibilidade da porta 30510, aplica ConfigMaps e o Secret TMDB, instala o Ollama e espera que descarregue o modelo, preenche os templates com o registry/tag pessoais e aplica os Deployments e Services das cinco aplicações. Cada execução gera uma nova identificação nos templates para recriar os Pods, mesmo quando a tag é a mesma. Com `imagePullPolicy: Always`, cada novo container consulta a imagem atual no registry, reutilizando as camadas em cache que não mudaram. Os Services permitem a comunicação entre aplicações.
+4. **Confirmar o arranque:** espera pelas cinco aplicações prontas, verifica a saúde do frontend e a página de login pelo IP público de cada worker e apresenta o endereço para abrir no browser. Estas verificações não substituem os testes funcionais de contas, perfis, filmes e recomendações.
 
 Os dois comandos Ansible executados dentro do contentor são:
 
@@ -208,7 +212,7 @@ ansible-playbook databases.yml
 ansible-playbook deploy.yml -e @../management/.local/deployment.yml
 ```
 
-Só avança para a segunda etapa se a primeira terminar com sucesso. Se falhar, interrompe e mantém os recursos já aplicados para diagnóstico. Não cria VMs, instala Kubernetes, constrói/publica imagens ou inclui RecommendationService; essas preparações são feitas nas etapas anteriores.
+Só avança para a segunda etapa se a primeira terminar com sucesso. Se falhar, interrompe e mantém os recursos já aplicados para diagnóstico. Não cria VMs, instala Kubernetes nem constrói/publica imagens; essas preparações são feitas nas etapas anteriores.
 
 ### Atualizar a aplicação com a mesma tag
 
@@ -221,7 +225,7 @@ just images-push
 just deploy
 ```
 
-O valor da tag de build (por defeito `v1`) deve coincidir com `application_image_tag` no ficheiro local. A publicação sozinha não atualiza os Pods em execução: `just deploy` provoca a atualização. Cada deployment recria os quatro Pods das aplicações; as BDs não são reiniciadas nem apagadas pelo novo mecanismo. Com uma réplica/Recreate haverá uma interrupção durante a atualização, e reiniciar UserService perde as sessões em memória. Não é possível recuperar uma versão antiga apenas pelo nome de uma tag que entretanto foi substituída.
+O valor da tag de build (por defeito `v1`) deve coincidir com `application_image_tag` no ficheiro local. A publicação sozinha não atualiza os Pods em execução: `just deploy` provoca a atualização. Cada deployment recria os cinco Pods das aplicações; as BDs não são reiniciadas nem apagadas pelo novo mecanismo. O modelo do Ollama fica num `emptyDir`, por isso é descarregado outra vez sempre que o Pod do Ollama reinicia. Com uma réplica/Recreate haverá uma interrupção durante a atualização, e reiniciar UserService perde as sessões em memória. Não é possível recuperar uma versão antiga apenas pelo nome de uma tag que entretanto foi substituída.
 
 ## 5. Terminar o teste e remover os recursos cloud
 
