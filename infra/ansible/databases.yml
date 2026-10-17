@@ -49,9 +49,9 @@
             path: "{{ kubernetes_data_path }}/{{ item }}"
             state: directory
             mode: "0755"
-          loop: [users-db, profiles-db, movie-db]
+          loop: [users-db, profiles-db, movie-db, reco-db]
 
-- name: Install and verify the three PostgreSQL databases
+- name: Install and verify the four PostgreSQL databases
   hosts: control_plane
   become: true
   gather_facts: false
@@ -92,6 +92,7 @@
         - databases/users-db.yaml
         - databases/profiles-db.yaml
         - databases/movie-db.yaml
+        - databases/reco-db.yaml
     - name: Render local volumes with the data worker's identity and mount path
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../../kubernetes/storage/local-volumes.yaml.j2"
@@ -106,18 +107,18 @@
     - name: Apply claims, Services and StatefulSets
       ansible.builtin.command:
         argv: [kubectl, apply, -f, "/home/ubuntu/{{ item }}.yaml"]
-      loop: [users-db, profiles-db, movie-db]
+      loop: [users-db, profiles-db, movie-db, reco-db]
       register: databases_apply
       changed_when: "' created' in databases_apply.stdout or ' configured' in databases_apply.stdout"
     - name: Wait for the database Pods to be Ready
       ansible.builtin.command:
         argv: [kubectl, -n, movie-rec-hub, rollout, status, "statefulset/{{ item }}", --timeout=300s]
-      loop: [users-db, profiles-db, movie-db]
+      loop: [users-db, profiles-db, movie-db, reco-db]
       changed_when: false
     - name: Verify that all claims are Bound
       ansible.builtin.command:
         argv: [kubectl, -n, movie-rec-hub, wait, "--for=jsonpath={.status.phase}=Bound", "pvc/{{ item }}-data", --timeout=120s]
-      loop: [users-db, profiles-db, movie-db]
+      loop: [users-db, profiles-db, movie-db, reco-db]
       changed_when: false
     - name: Verify SQL through each internal Service without a password
       ansible.builtin.command:
@@ -131,7 +132,7 @@
           - /bin/sh
           - -ec
           - 'PGCONNECT_TIMEOUT=5 psql -X -w -h "{{ item }}" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT current_database();"'
-      loop: [users-db, profiles-db, movie-db]
+      loop: [users-db, profiles-db, movie-db, reco-db]
       register: database_sql
       until: database_sql.rc == 0
       retries: 12

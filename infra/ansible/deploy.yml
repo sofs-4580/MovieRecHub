@@ -1,6 +1,6 @@
 ---
 # Apply the application manifests as in lab4; cluster and databases must exist first.
-- name: Deploy frontend and the three backend services
+- name: Deploy frontend and the four backend services
   hosts: control_plane
   become: true
   gather_facts: false
@@ -53,7 +53,7 @@
     - name: Require the three database StatefulSets to be Ready
       ansible.builtin.command:
         argv: [kubectl, -n, movie-rec-hub, rollout, status, "statefulset/{{ item }}", --timeout=300s]
-      loop: [users-db, profiles-db, movie-db]
+      loop: [users-db, profiles-db, movie-db, reco-db]
       changed_when: false
   tasks:
     - name: Copy the application namespace and non-secret configuration

@@ -61,7 +61,7 @@ variable "worker_machine_type" {
 variable "worker_count" {
   description = "Common number of worker VMs; initially one worker plus one control plane."
   type        = number
-  default     = 1
+  default     = 2
   nullable    = false
 
   validation {
