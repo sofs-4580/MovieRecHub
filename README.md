@@ -35,6 +35,9 @@ Core features:
 - Public profiles with display name, bio, favourite genres and decades
 - Recommendations based on the user's lists, powered by a local LLM
 
+### Demonstration Video
+
+> To watch the demo, see the [demo video on youtube](OFFICIAL_VIDEO_LINK).
 
 ## Architecture
 
@@ -190,6 +193,10 @@ Besides Docker Compose, the whole application runs on a Kubernetes cluster built
 | VMs and network | Terraform (`infra/gcp`) | 1 control plane and 2 workers on GCP (`europe-west4`) |
 | Images | Docker and Artifact Registry (`infra/registry`, `infra/images`) | 5 images, one per service |
 | Cluster and applications | Ansible (`infra/ansible`) and the manifests in `kubernetes/` | kubeadm cluster, databases, Ollama, services |
+
+### Demonstration Deployment Video
+
+> To watch the full deployment being done, see the [deployment video](https://drive.google.com/file/d/1qKnY1MhyN-pFYNAMLfd3pG8QvVGAjFlN/view?usp=sharing).
 
 ### What runs where
 

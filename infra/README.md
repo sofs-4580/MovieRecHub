@@ -4,6 +4,10 @@ Instala frontend, UserService, ProfileService, MovieService e RecommendationServ
 
 O cluster tem 1 control plane e 2 workers: o worker-1 corre as bases de dados e as aplicações, e o worker-2 corre o Ollama.
 
+### Demonstration Deployment Video
+
+> Para ver o deploy completo a ser feito [deployment video](https://drive.google.com/file/d/1qKnY1MhyN-pFYNAMLfd3pG8QvVGAjFlN/view?usp=sharing).
+
 ## Pré-requisitos
 
 - Docker com Compose e `just` instalados.
