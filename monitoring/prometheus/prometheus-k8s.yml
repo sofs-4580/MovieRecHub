@@ -61,6 +61,11 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_phase]
         action: keep
         regex: Running
+
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: drop
+        regex: ollama
+
       - source_labels: [__meta_kubernetes_pod_label_app]
         # Label to which the resulting value is written in a replace action.
         # It is mandatory for replace actions. Regex capture groups are available.
