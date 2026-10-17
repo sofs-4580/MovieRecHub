@@ -25,7 +25,7 @@ resource "google_compute_firewall" "cluster_rules" {
 
   allow {
     protocol = "tcp"
-    ports    = ["80", "443", "30510", "6443", "179"]
+    ports    = ["80", "443", "30510", "30300", "6443", "179"]
   }
 
   allow {
