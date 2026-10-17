@@ -1,0 +1,37 @@
+---
+# Remove the monitoring tools; the application and its databases are not touched.
+- name: Remove Prometheus, Grafana, node-exporter and kube-state-metrics
+  #só corre aqui
+  hosts: control_plane
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Delete the monitoring namespace and everything in it
+      # é como escrever o kubectl delete namespace monitoring... no terminal
+      ansible.builtin.command:
+        argv: [kubectl, delete, namespace, monitoring, --ignore-not-found, --timeout=300s]
+      # guarda o outpu
+      register: namespace_delete
+      # diz ao ansible qdo a tarefa conta como mudada (que é só quando tem "deleted")
+      changed_when: "'deleted' in namespace_delete.stdout"
+    - name: Delete the cluster-wide read permissions
+      ansible.builtin.command:
+        argv: [kubectl, delete, "{{ item }}", --ignore-not-found]
+      #ClusterRoles e ClusterRoleBindings não pertencem a nenhum namespace, são para o cluster inteiro
+      #o prometheus e o kube-state-metrics precisam de ler pods e nós de todos os namespaces. 
+      #Por isso essas permissões ficam fora do monitoring, e apagar o namespace não as apaga
+      loop:
+        - clusterrolebinding/prometheus
+        - clusterrole/prometheus
+        - clusterrolebinding/kube-state-metrics
+        - clusterrole/kube-state-metrics
+      register: rbac_delete
+      changed_when: "'deleted' in rbac_delete.stdout"
+    # apagar a pasta que monitoring.yml criou
+    - name: Remove the copied manifests
+      ansible.builtin.file:
+        path: /home/ubuntu/monitoring
+        state: absent

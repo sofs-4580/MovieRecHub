@@ -5,3 +5,5 @@ application_image_tag: v1
 # TMDB v3 API key (the applications currently use the api_key query parameter).
 # Fill in only the private copy. Never commit the real key.
 tmdb_api_key: ""
+# Grafana admin password (12+ characters). Fill in only the private copy.
+grafana_admin_password: ""

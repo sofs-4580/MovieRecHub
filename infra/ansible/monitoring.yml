@@ -1,0 +1,214 @@
+---
+# Usage (management container): ansible-playbook monitoring.yml -e @../management/.local/deployment.yml
+- name: Deploy Prometheus, Grafana, node-exporter and kube-state-metrics
+  hosts: control_plane   #só corre aqui
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  vars:
+    #pasta dos yaml dos k8s
+    monitoring_manifests: "{{ playbook_dir }}/../../kubernetes/monitoring" 
+    #a pasta com os prometheus-k8s.yml e grafana
+    monitoring_config: "{{ playbook_dir }}/../../monitoring"
+    #pasta na vm pra onde vamos copiar os ficheiros
+    remote_dir: /home/ubuntu/monitoring
+    grafana_node_port: 30300
+  pre_tasks:
+    - name: Require the current inventory
+      ansible.builtin.assert:
+      # verificar que não é teste, 1 cp, >= 1 worker
+        that:
+          - not ansible_check_mode
+          - groups.get('control_plane', []) | length == 1
+          - groups.get('workers', []) | length >= 1
+        fail_msg: "Use the Terraform inventory; --syntax-check is the local validation mode."
+    - name: Require a Grafana admin password from the private local variables file
+      ansible.builtin.assert:
+      #queremos password, se não fica exposto
+        that:
+          - grafana_admin_password | default('') | length > 0
+        fail_msg: "Fill grafana_admin_password in deployment.yml."
+      no_log: true
+    - name: Check the control plane prerequisites
+      #correr o check cluster oara confirmar que k8 está no control plane
+      ansible.builtin.include_tasks: tasks/check-cluster.yml
+    - name: Wait for the workers to be Ready
+      ansible.builtin.command:
+        argv: [kubectl, wait, --for=condition=Ready, "node/{{ item }}", --timeout=300s]
+      loop: "{{ groups['workers'] }}"
+      changed_when: false
+    - name: Read existing Service ports before reserving the Grafana port
+      #le todos os services do cluster e guarda em existing_services
+      ansible.builtin.command: kubectl get services --all-namespaces -o json
+      register: existing_services
+      changed_when: false
+    - name: Refuse a Grafana NodePort already used by another Service
+      ansible.builtin.assert:
+        that: item.metadata.namespace == 'monitoring' and item.metadata.name == 'grafana'
+        fail_msg: "NodePort {{ grafana_node_port }} is already used by another Service."
+      # percorer cada service (when vê só os da porta 30300)
+      #para cada um, vemos se é o nosso grafana - se for outro serviço, playbook para
+      loop: "{{ (existing_services.stdout | from_json)['items'] }}"
+      #adicionei isto para mostrar só namespace/nome, que isto tava a mandar os Json todos
+      loop_control:
+        label: "{{ item.metadata.namespace }}/{{ item.metadata.name }}"
+      when: >-
+        item.spec.ports | default([]) | selectattr('nodePort', 'defined') |
+        selectattr('nodePort', 'eq', grafana_node_port) | list | length > 0
+  tasks:
+    - name: Create the remote folders
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755" #dono escreve, resto lê
+      loop:
+        - "{{ remote_dir }}"
+        - "{{ remote_dir }}/dashboards"
+    - name: Copy the monitoring manifests
+      ansible.builtin.copy:
+        src: "{{ monitoring_manifests }}/{{ item }}"
+        dest: "{{ remote_dir }}/{{ item }}"
+        mode: "0644"
+      loop: [namespace.yaml, prometheus.yaml, node-exporter.yaml, kube-state-metrics.yaml, grafana.yaml]
+    - name: Copy the Prometheus and Grafana configuration files
+      ansible.builtin.copy:
+        src: "{{ monitoring_config }}/{{ item.src }}"
+        dest: "{{ remote_dir }}/{{ item.dest }}"
+        mode: "0644"
+      #aqui tive que mudar os nomes para quando chegarem à vm ficarem com o nome que o prometheus espera
+      loop:
+        - {src: prometheus/prometheus-k8s.yml, dest: prometheus.yml}
+        - {src: grafana/provisioning/datasources/datasources.yml, dest: datasources.yml}
+        - {src: grafana/provisioning/dashboards/dashboards.yml, dest: dashboards.yml}
+        - {src: grafana/dashboards/, dest: dashboards/} #aqui podemos copiar a pasta toda
+      loop_control:
+        label: "{{ item.src }}"
+    - name: Apply the monitoring namespace
+      ansible.builtin.command:
+      #kubectl apply -f /home/ubuntu/monitoring/namespace.yaml
+        argv: [kubectl, apply, -f, "{{ remote_dir }}/namespace.yaml"]
+      register: namespace_apply
+      changed_when: "' created' in namespace_apply.stdout or ' configured' in namespace_apply.stdout"
+    - name: Apply the Grafana admin Secret through stdin without writing a remote credential file
+      ansible.builtin.command:
+      # -f - diz ao kubectl para ler o objeto do stdin
+        argv: [kubectl, apply, -f, -]
+        # ansible monta o secret em memória como um dicionário e envia-o para o stdin (igual deploy.yml)
+        stdin: >-
+          {{ {'apiVersion': 'v1', 'kind': 'Secret',
+              'metadata': {'name': 'grafana-admin', 'namespace': 'monitoring'},
+              'type': 'Opaque', 'data': {'password': grafana_admin_password | b64encode}} | to_json }}
+      register: grafana_secret_apply
+      changed_when: "' created' in grafana_secret_apply.stdout or ' configured' in grafana_secret_apply.stdout"
+      #escondemos a pass
+      no_log: true
+    - name: Read the Prometheus configuration currently in the cluster
+      ansible.builtin.command:
+        argv: [kubectl, -n, monitoring, get, configmap, prometheus-config, -o, json, --ignore-not-found]
+      register: previous_prometheus_config
+      changed_when: false
+      #ver este
+    - name: Decide whether Prometheus must reload its configuration
+      ansible.builtin.set_fact:
+        prometheus_config_changed: >-
+          {{ previous_prometheus_config.stdout | length > 0 and
+             ((previous_prometheus_config.stdout | from_json).data['prometheus.yml'] | trim) !=
+             (lookup('file', monitoring_config ~ '/prometheus/prometheus-k8s.yml') | trim) }}
+    # ConfigMap é a forma de pôr ficheiros de configuração dentro do Kubernetes, para depois os montar dentro de um pod
+    - name: Render the ConfigMaps from the configuration files
+      ansible.builtin.command:
+        argv: "{{ ['kubectl', '-n', 'monitoring', 'create', 'configmap', item.name] + item.files + ['--dry-run=client', '-o', 'yaml'] }}"
+      loop:
+        - name: prometheus-config
+          files: ["--from-file=prometheus.yml={{ remote_dir }}/prometheus.yml"]
+        - name: grafana-provisioning
+          files: ["--from-file={{ remote_dir }}/datasources.yml", "--from-file={{ remote_dir }}/dashboards.yml"]
+        - name: grafana-dashboards
+          files: ["--from-file={{ remote_dir }}/dashboards"]
+      loop_control:
+        label: "{{ item.name }}"
+      register: monitoring_configmaps #guardamos os yaml que iriamos criar
+      changed_when: false
+    - name: Apply the ConfigMaps #aqui, aplicamos os yamls anteriores
+    #não juntamos os dois passos porque create vai dar erro se já existir, mas aply cria ou atualiza
+      ansible.builtin.command:
+      # temos de fazer server side apply para não guardar cópia (apply é muito pequeno para os nossos json)
+        argv: [kubectl, apply, --server-side, --force-conflicts, -f, -]
+        stdin: "{{ item.stdout }}"
+      loop: "{{ monitoring_configmaps.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      changed_when: true
+
+    #kubectl apply a cada um dos 4 manifests - é aqui que os pods são criados (namespace já foi tratado)
+    - name: Apply Prometheus, node-exporter, kube-state-metrics and Grafana
+      ansible.builtin.command:
+        argv: [kubectl, apply, -f, "{{ remote_dir }}/{{ item }}"]
+      loop: [prometheus.yaml, node-exporter.yaml, kube-state-metrics.yaml, grafana.yaml]
+      register: monitoring_apply
+      changed_when: "' created' in monitoring_apply.stdout or ' configured' in monitoring_apply.stdout"
+    #rollout restart cria um pod novo e apaga o antigo
+    - name: Restart Prometheus when its scrape configuration changed
+      ansible.builtin.command:
+        argv: [kubectl, -n, monitoring, rollout, restart, deployment/prometheus]
+      when: prometheus_config_changed | bool
+    #reiniciamos grafana sempre, dashboards assim são sempre os mais recentes  
+    - name: Restart Grafana so it reloads the provisioned datasource and dashboards
+      ansible.builtin.command:
+        argv: [kubectl, -n, monitoring, rollout, restart, deployment/grafana]
+
+    - name: Wait for the monitoring Deployments
+      ansible.builtin.command:
+      #rollout status fica à espera até o pod novo estar pronto (ou falha passado 5 min)
+        argv: [kubectl, -n, monitoring, rollout, status, "deployment/{{ item }}", --timeout=300s]
+      loop: [prometheus, kube-state-metrics, grafana]
+      changed_when: false
+    - name: Wait for node-exporter on every node
+      ansible.builtin.command:
+      #mesma coisa mas para o DaemonSet, que tem um pod em cada nó
+        argv: [kubectl, -n, monitoring, rollout, status, daemonset/node-exporter, --timeout=300s]
+      changed_when: false
+
+    # targets todos up? ver este
+    - name: Wait until Prometheus reports every scrape target as up
+      ansible.builtin.command:
+        argv: [kubectl, -n, monitoring, exec, deployment/prometheus, --, wget, -qO-, "http://localhost:9090/api/v1/targets?state=active"]
+      register: prometheus_targets
+      changed_when: false
+      until: >-
+        prometheus_targets.rc == 0 and
+        (prometheus_targets.stdout | from_json).data.activeTargets | length > 0 and
+        (prometheus_targets.stdout | from_json).data.activeTargets | rejectattr('health', 'eq', 'up') | list | length == 0
+      retries: 18
+      delay: 10
+    # para o prometheus nos dizer o que está a acontecer
+    # job, endereço -> estado  
+    - name: Report the scrape targets
+      ansible.builtin.debug:
+        msg: "{{ item.labels.job }} {{ item.scrapeUrl }} -> {{ item.health }}"
+      loop: "{{ (prometheus_targets.stdout | from_json).data.activeTargets }}"
+      loop_control:
+        label: "{{ item.labels.job }}"
+    #mesma ideia, dentro do pod do Grafana, pede /api/health e espera até a resposta dizer "database": "ok"
+    - name: Verify that Grafana is healthy inside the cluster
+      ansible.builtin.command:
+        argv: [kubectl, -n, monitoring, exec, deployment/grafana, --, wget, -qO-, http://localhost:3000/api/health]
+      register: grafana_health
+      changed_when: false
+      until: grafana_health.rc == 0 and (grafana_health.stdout | from_json).database | default('') == 'ok'
+      retries: 12
+      delay: 5
+    # corre kubectl get pods,services e mostra o resultado linha a linha
+    - name: Show the monitoring Pods and Services
+      ansible.builtin.command: kubectl -n monitoring get pods,services -o wide
+      register: monitoring_status
+      changed_when: false
+    - name: Report the installed resources
+      ansible.builtin.debug:
+        var: monitoring_status.stdout_lines
+    - name: Show the Grafana address for each worker
+      ansible.builtin.debug:
+        msg: "Grafana: http://{{ hostvars[item].ansible_host }}:{{ grafana_node_port }}/ (user admin)"
+      loop: "{{ groups['workers'] }}"
