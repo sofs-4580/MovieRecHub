@@ -1,13 +1,14 @@
 # Frontend
 
-The **web application** of Movie Rec Hub and the only part meant to be opened in a browser: a Spring Boot + Thymeleaf app that renders every page and talks to the three backend services over HTTP. It has no database and no business logic of its own.
+The **web application** of Movie Rec Hub and the only part meant to be opened in a browser: a Spring Boot + Thymeleaf app that renders every page and talks to the four backend services over HTTP. It has no database and no business logic of its own.
 
 Part of the [Movie Rec Hub](../README.md) project.
 
 ```
 browser ──► frontend :8080 ──► user-service     login, register, logout, password, session check
                            ├─► profile-service  browse / view / edit profiles
-                           └─► movie-service    movies, reviews, lists
+                           ├─► movie-service    movies, reviews, lists
+                           └─► recommendation-service  "For you" list, free-text requests
 ```
 
 ---
@@ -20,7 +21,8 @@ browser ──► frontend :8080 ──► user-service     login, register, log
 | Port | `8080` → http://localhost:8080 |
 | Database | none |
 | Health check | `GET /actuator/health` |
-| Depends on | `user-service`, `profile-service`, `movie-service` (all must be healthy) |
+| Metrics | `GET /actuator/prometheus` |
+| Depends on | `user-service`, `profile-service`, `movie-service`, `recommendation-service` (all must be healthy) |
 | Tech stack | Java 17 · Spring Boot 3.5 · Spring Web · Thymeleaf · Actuator |
 
 ---
@@ -34,6 +36,7 @@ browser ──► frontend :8080 ──► user-service     login, register, log
 | Sign in / create account | `/login`, `/register` | – |
 | People, public profile | `/profiles`, `/profiles/{id}` | yes |
 | My profile | `/profile` | yes |
+| Recommendations ("For you") | `/recommendations` | yes |
 | Account, change password | `/account`, `/account/password` | yes |
 
 `/` redirects to `/movies`.
@@ -46,6 +49,7 @@ browser ──► frontend :8080 ──► user-service     login, register, log
 | `/movies/{id}/review` | Write a review (1–5 stars and a comment) |
 | `/lists`, `/lists/add`, `/lists/{id}/remove`, `/lists/{id}/delete` | Create a list, add or remove a movie, delete a list |
 | `/profile` | Save your profile |
+| `/recommendations` | Ask for recommendations in free text (e.g. `two animated movies for kids`) |
 | `/account/password` | Change your password |
 
 ---
@@ -61,13 +65,24 @@ browser ──► frontend :8080 ──► user-service     login, register, log
   a different cookie name, `FRONTEND_SESSION`, otherwise it would overwrite the login cookie.
   **Do not remove `server.servlet.session.cookie.name`.**
 
+## How recommendations work
+
+* Opening `/recommendations` first sends the user's favourite genres and decades (read from
+  profile-service) to **recommendation-service**, so the background recommendations stay up to date;
+  then it shows the cached "For you" list. This is fast.
+* Writing a request in the form sends the text to recommendation-service, which asks the language
+  model (Ollama). This can take **up to a minute or two** on a CPU-only cluster (about 46 s on
+  4 vCPUs), so the read timeout for this call is 120 s.
+* If recommendation-service is down or still preparing the list, the page shows a message instead of
+  failing.
+
 ## How errors are shown
 
 Calls to the backends go through `ServiceCaller`, which turns every failure into an `ApiException`
 (`503 SERVICE_UNAVAILABLE` when a service cannot be reached, `502 BAD_RESPONSE` for unexpected answers,
 or the `code`/`message` the service sent). Controllers show the message on the page; whatever they do
 not handle is caught by `ApiExceptionAdvice`: an expired login goes back to `/login`, anything else is
-shown on the movies page. Calls time out after 3 s to connect and 10 s to read.
+shown on the movies page. Calls to the other services time out after 3 s to connect and 10 s to read (recommendation-service: 2 s to connect, 3 s to read for the "For you" list and 120 s for free-text requests).
 
 ---
 
@@ -79,11 +94,13 @@ shown on the movies page. Calls time out after 3 s to connect and 10 s to read.
 | `USER_SERVICE_URL` | `http://localhost:8081` | UserService |
 | `PROFILE_SERVICE_URL` | `http://localhost:8082` | ProfileService |
 | `MOVIE_SERVICE_URL` | `http://localhost:8083` | MovieService |
+| `RECOMMENDATION_SERVICE_URL` | `http://localhost:8084` | RecommendationService |
 | `LOG_LEVEL` | `INFO` | Root log level |
 
 Default ports across the project: frontend 8080, user-service 8081, profile-service 8082,
-movie-service 8083, recommendation-service 8084. In Docker the three service URLs are set by
-`docker-compose.yml` to the container names (`http://user-service:8081`, …).
+movie-service 8083, recommendation-service 8084. In Docker the four service URLs are set by
+`docker-compose.yml` to the container names (`http://user-service:8081`, …). In Kubernetes they are set
+by the manifests to the Service names, and the frontend is exposed on NodePort `30510`.
 
 ---
 
@@ -95,7 +112,7 @@ movie-service 8083, recommendation-service 8084. In Docker the three service URL
 docker compose up --build
 ```
 
-then open http://localhost:8080. The frontend starts last, after the three backends are healthy.
+then open http://localhost:8080. The frontend starts last, after the four backends are healthy.
 
 **On your machine** (Java 17 + Maven), with the backends already running:
 
@@ -114,15 +131,16 @@ Health: http://localhost:8080/actuator/health
 ## Database
 
 None. All data lives in the backend services' databases; see the READMEs of
-[UserService](../UserService/README.md#database), [ProfileService](../ProfileService/README.md#database)
-and [MovieService](../MovieService/README.md#database) for how to connect to them with DBeaver.
+[UserService](../UserService/README.md#database), [ProfileService](../ProfileService/README.md#database),
+[MovieService](../MovieService/README.md#database) and
+[RecommendationService](../RecomendationService/README.md) for how to connect to them with DBeaver.
 
 ---
 
 ## Source layout
 
 `client/` one class per backend (`AccountClient`, `ProfileServiceClient`, `MovieServiceClient`,
-`UserSessionClient`) plus `ServiceCaller`, which turns HTTP errors into `ApiException`.
+`RecommendationServiceClient`, `UserSessionClient`) plus `ServiceCaller`, which turns HTTP errors into `ApiException`.
 `controller/` one controller per area. `templates/fragments/layout.html` holds the sidebar, the
 alert box and the genre chips shared by all pages.
 
@@ -134,7 +152,7 @@ Frontend/
     ├── java/psia/movieRecHub/
     │   ├── client/              --> HTTP clients for the backends + ServiceCaller / ApiException
     │   ├── config/              --> CurrentUser (request-scoped login), RestTemplateConfig
-    │   ├── controller/          --> Auth, Account, Profile, Movie, MovieList controllers + ApiExceptionAdvice
+    │   ├── controller/          --> Auth, Account, Profile, Movie, MovieList, Recommendation controllers + ApiExceptionAdvice
     │   └── dto/                 --> Objects used by the pages
     └── resources/
         ├── application.properties
@@ -150,4 +168,4 @@ Frontend/
 - Login sessions are held by UserService in memory, so restarting it signs everybody out.
 - The frontend trusts UserService's answer about who is logged in and passes that id to MovieService as `X-User-Id`.
 - There is no HTTPS; set `SESSION_COOKIE_SECURE=true` on UserService once the site is served over it.
-- Recommendations (RecommendationService) are not part of the UI yet.
+- Free-text recommendation requests are slow (up to a minute or two) because the language model runs on CPU; the cached "For you" list is instant. The model works best with combined requests such as `a comedy from the 90s`; a decade or a single genre on its own can return poor results.
