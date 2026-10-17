@@ -21,7 +21,7 @@
         <form th:action="@{/recommendations}" method="post" class="panel form-row"
               onsubmit="var b=this.querySelector('button'); b.disabled=true; b.textContent='Thinking…';">
             <input type="text" name="text" maxlength="300" class="input input-grow"
-                   th:value="${askText}" placeholder="e.g. a horror movie from the 80s" required/>
+                   th:value="${askText}" placeholder="e.g. two animated movies for kids" required/>
             <button type="submit" class="btn">Ask</button>
         </form>
 
