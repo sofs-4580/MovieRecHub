@@ -36,12 +36,9 @@ Core features:
 - Recommendations based on the user's lists, powered by a local LLM
 
 
-## Domain Model
-
-![Domain Model](DomainModel.png)
-
 ## Architecture
 
+![Domain Model](DomainModel.png)
 
 The **Frontend** talks to the services over HTTP. UserService and ProfileService call each other (profile creation and session checks), MovieService seeds its catalogue from TMDB, and RecommendationService reads the catalogue and the user's lists from MovieService and asks Ollama (the LLM server) for suggestions. Every service that stores data has its own PostgreSQL database.
 
