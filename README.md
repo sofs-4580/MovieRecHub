@@ -42,7 +42,6 @@ Core features:
 
 ## Architecture
 
----
 
 The **Frontend** talks to the services over HTTP. UserService and ProfileService call each other (profile creation and session checks), MovieService seeds its catalogue from TMDB, and RecommendationService reads the catalogue and the user's lists from MovieService and asks Ollama (the LLM server) for suggestions. Every service that stores data has its own PostgreSQL database.
 
@@ -382,5 +381,3 @@ pre-commit install
 - **MovieService's schema is managed by Hibernate** (`update`), not by migrations.
 - **`PATCH /api/movies/{id}/rating`** lets any caller overwrite a movie's average rating; it exists for internal recalculation.
 - **Recommendations are slow without a GPU**, and Ollama's model is not persistent on Kubernetes (`emptyDir`). See the [RecommendationService README](RecomendationService/README.md#known-limitations).
-
----
