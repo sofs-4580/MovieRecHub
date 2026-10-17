@@ -50,7 +50,7 @@
       when: >-
         item.spec.ports | default([]) | selectattr('nodePort', 'defined') |
         selectattr('nodePort', 'eq', 30510) | list | length > 0
-    - name: Require the three database StatefulSets to be Ready
+    - name: Require the four database StatefulSets to be Ready
       ansible.builtin.command:
         argv: [kubectl, -n, movie-rec-hub, rollout, status, "statefulset/{{ item }}", --timeout=300s]
       loop: [users-db, profiles-db, movie-db, reco-db]
@@ -61,11 +61,11 @@
         src: "{{ playbook_dir }}/../../kubernetes/{{ item }}"
         dest: "/home/ubuntu/{{ item | basename }}"
         mode: "0644"
-      loop: [namespace.yaml, config/application.yaml]
+      loop: [namespace.yaml, config/application.yaml, ollama.yaml]
     - name: Apply the namespace and ConfigMaps
       ansible.builtin.command:
         argv: [kubectl, apply, -f, "/home/ubuntu/{{ item }}"]
-      loop: [namespace.yaml, application.yaml]
+      loop: [namespace.yaml, application.yaml, ollama.yaml]
       register: application_config_apply
       changed_when: "' created' in application_config_apply.stdout or ' configured' in application_config_apply.stdout"
     - name: Apply the TMDB Secret through stdin without writing a remote credential file
@@ -84,6 +84,10 @@
     - name: Choose a new application rollout timestamp for this deployment
       ansible.builtin.set_fact:
         application_deploy_timestamp: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%S.%fZ') }}"
+    - name: Wait for Ollama to download its model and become Ready
+      ansible.builtin.command:
+        argv: [kubectl, -n, movie-rec-hub, rollout, status, deployment/ollama, --timeout=1200s]
+      changed_when: false
     - name: Render the application manifests with the personal registry and version
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../../kubernetes/services/{{ item }}.yaml.j2"
