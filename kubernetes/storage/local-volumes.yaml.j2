@@ -1,5 +1,5 @@
 {# Node and mount path come from the Terraform inventory, not personal IPs. #}
-{% for database in ['users-db', 'profiles-db', 'movie-db'] %}
+{% for database in ['users-db', 'profiles-db', 'movie-db', 'reco-db'] %}
 ---
 apiVersion: v1
 kind: PersistentVolume

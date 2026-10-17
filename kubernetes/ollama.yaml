@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: movie-rec-hub
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  progressDeadlineSeconds: 1200
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: ollama
+          image: ollama/ollama
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              ollama serve &
+              trap 'kill $!' TERM INT
+              until ollama list >/dev/null 2>&1; do sleep 1; done
+              ollama pull "$LLM_MODEL"
+              wait
+          ports:
+            - name: http
+              containerPort: 11434
+          env:
+            - name: OLLAMA_HOST
+              value: "0.0.0.0:11434"
+            - name: LLM_MODEL
+              value: "hf.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 3Gi
+          startupProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'ollama list | grep -q "$LLM_MODEL"']
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'ollama list | grep -q "$LLM_MODEL"']
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+      volumes:
+        - name: models
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: movie-rec-hub
+spec:
+  type: ClusterIP
+  selector:
+    app: ollama
+  ports:
+    - name: http
+      port: 11434
+      targetPort: http

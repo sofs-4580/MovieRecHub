@@ -37,3 +37,11 @@ services:
       context: ../../MovieService
       labels:
         org.opencontainers.image.version: ${IMAGE_TAG}
+
+  recommendation-service:
+    <<: *runtime
+    image: europe-west4-docker.pkg.dev/${GCP_PROJECT_ID:?Define GCP_PROJECT_ID}/psia-g34/recommendation-service:${IMAGE_TAG:?Export IMAGE_TAG with a unique version}
+    build:
+      context: ../../RecomendationService
+      labels:
+        org.opencontainers.image.version: ${IMAGE_TAG}

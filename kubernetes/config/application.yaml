@@ -51,6 +51,22 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  name: recommendation-service-config
+  namespace: movie-rec-hub
+data:
+  SERVER_PORT: "8084"
+  DB_URL: jdbc:postgresql://reco-db:5432/movie_rec_hub_recommendations
+  DB_USERNAME: reco_service
+  DB_PASSWORD: ""
+  MOVIE_SERVICE_URL: http://movie-service:8083
+  OLLAMA_URL: http://ollama:11434
+  # Must be the same model that kubernetes/ollama.yaml downloads.
+  LLM_MODEL: hf.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M
+  MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: readinessState,db
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
   name: frontend-config
   namespace: movie-rec-hub
 data:
@@ -58,3 +74,4 @@ data:
   USER_SERVICE_URL: http://user-service:8081
   PROFILE_SERVICE_URL: http://profile-service:8082
   MOVIE_SERVICE_URL: http://movie-service:8083
+  RECOMMENDATION_SERVICE_URL: http://recommendation-service:8084
