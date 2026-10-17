@@ -4,7 +4,6 @@
 
 Everything runs with a single `docker compose up --build`, or on a Kubernetes cluster on GCP built with infrastructure as code (see [Deploying on Kubernetes](#deploying-on-kubernetes-gcp)). Each service owns its own database, talks to the others over HTTP and can also be started on its own for development.
 
----
 
 ## Authors
 
@@ -16,19 +15,17 @@ Everything runs with a single `docker compose up --build`, or on a Kubernetes cl
 
 > Group **g34**
 
----
-
 ## Context
 
 The platform is split by **bounded context**. Each context is its own service, with its own database and its own release cycle:
 
-| Context | Service | What it owns |
-|---|---|---|
-| Identity | [UserService](UserService/README.md) | Accounts, passwords, login sessions |
-| Social | [ProfileService](ProfileService/README.md) | Public profiles, favourite genres and decades |
-| Catalogue | [MovieService](MovieService/README.md) | Movies, reviews, movie lists |
-| Recommendations | [RecommendationService](RecomendationService/README.md) | AI-assisted suggestions (Ollama), cached per user |
-| Presentation | [Frontend](Frontend/README.md) | Server-rendered web UI (Thymeleaf) |
+| Service | What it owns |
+|---|---|
+| [UserService](UserService/README.md) | Accounts, passwords, login sessions |
+| [ProfileService](ProfileService/README.md) | Public profiles, favourite genres and decades |
+| [MovieService](MovieService/README.md) | Movies, reviews, movie lists |
+| [RecommendationService](RecomendationService/README.md) | AI-assisted suggestions (Ollama), cached per user |
+| [Frontend](Frontend/README.md) | Server-rendered web UI (Thymeleaf) |
 
 Core features:
 - Registration, login and password change
@@ -39,13 +36,9 @@ Core features:
 - Recommendations based on the user's lists, powered by a local LLM
 
 
----
-
 ## Domain Model
 
 ![Domain Model](DomainModel.png)
-
----
 
 ## Architecture
 
@@ -57,11 +50,11 @@ The **Frontend** talks to the services over HTTP. UserService and ProfileService
 
 | Service | Container | Port | Database | Health | Status |
 |---|---|---|---|---|---|
-| Frontend | `frontend` | `8080` | – | `/actuator/health` | ✅ integrated |
-| UserService | `user-service` | `8081` | `users-db` (`5433`) | `/actuator/health` | ✅ integrated |
-| ProfileService | `profile-service` | `8082` | `profiles-db` (`5434`) | `/actuator/health` | ✅ integrated |
-| MovieService | `movie-service` | `8083` | `movie-db` (`5435`) | `/actuator/health` | ✅ integrated |
-| RecommendationService | `recommendation-service` | `8084` | `reco-db` (`5436`) | `/actuator/health` | ✅ integrated (needs Ollama) |
+| Frontend | `frontend` | `8080` | – | `/actuator/health` | integrated |
+| UserService | `user-service` | `8081` | `users-db` (`5433`) | `/actuator/health` | integrated |
+| ProfileService | `profile-service` | `8082` | `profiles-db` (`5434`) | `/actuator/health` |  integrated |
+| MovieService | `movie-service` | `8083` | `movie-db` (`5435`) | `/actuator/health` |  integrated |
+| RecommendationService | `recommendation-service` | `8084` | `reco-db` (`5436`) | `/actuator/health` |  integrated (needs Ollama) |
 
 > **Note:** the **Frontend** is the only part meant to be opened in a browser. The backend services also publish a port on `127.0.0.1`, but only to test them with `curl`/Postman and look at their databases.
 
@@ -128,7 +121,7 @@ g34/
 
 Every service folder has its own `README.md` with endpoints, configuration and database details.
 
----
+
 
 ## Getting Started
 
@@ -191,7 +184,6 @@ docker compose down          # stop, keep the data
 docker compose down -v       # stop and DELETE all databases
 ```
 
----
 
 ## Deploying on Kubernetes (GCP)
 
@@ -228,7 +220,6 @@ The Spring Boot services take about one to two minutes to become Ready after a d
 - Do not run the full `cluster.yml` again once the databases exist; `just deploy` updates the applications.
 - Run `terraform destroy` in `infra/gcp` when you stop working: the cluster costs roughly 0.36 USD per hour.
 
----
 
 ## Databases
 
@@ -283,7 +274,6 @@ docker volume rm movie-rec-hub_movie-db-data
 docker compose up -d
 ```
 
----
 
 ## Ports and Variables
 
@@ -306,7 +296,7 @@ Inside the Docker network, services always reach each other by container name an
 
 Every service reads its own configuration from environment variables with sensible defaults for running on your machine; the full list is in each service's README. All services use the same names for the database settings: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`.
 
----
+
 
 ## Developing a Single Service
 
@@ -340,7 +330,6 @@ docker compose up -d --build movie-service
 | `docker compose exec users-db psql -U user_service -d movie_rec_hub_users` | Open a SQL shell |
 | `docker compose down -v` | Stop and wipe every database |
 
----
 
 ## Testing
 
@@ -353,7 +342,6 @@ mvn test
 
 > **Note:** `UserService/src/test/` and `ProfileService/src/test/` are listed in `.gitignore`, so their tests are not versioned.
 
----
 
 ## Code Quality and Conventions
 
@@ -370,17 +358,6 @@ pre-commit install
 | `end-of-file-fixer`, `trailing-whitespace` | Clean files |
 | `google-java-format` | Formats staged `.java` files (via `format-code.sh`) |
 
-> **Note:** if a hook reformats a file, the commit is aborted. Run `git add -u` and commit again.
-
-**Commit messages** follow the pattern `[Service]: short description in the imperative`, for example:
-
-```plaintext
-[MovieService]: read datasource from DB_* env vars
-[Frontend]: add login, account and profile pages
-[docker-compose]: standardise env vars, ports and healthchecks
-```
-
----
 
 ## Troubleshooting
 
@@ -395,7 +372,6 @@ pre-commit install
 | Database container refuses to start after a Postgres upgrade | Old volume from a different major version | `docker compose down -v` (deletes data) |
 | DBeaver asks for a password | Dev databases have none | Leave it empty and test the connection again |
 
----
 
 ## Known Limitations
 
