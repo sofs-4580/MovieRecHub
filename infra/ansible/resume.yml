@@ -1,0 +1,235 @@
+---
+- name: Start the same VMs and refresh their connection details
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tags: [lifecycle]
+  tasks:
+    - name: Keep the management host local for delegation in later plays
+      ansible.builtin.add_host:
+        name: localhost
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    - name: Validate the existing installation and VM identities
+      ansible.builtin.import_tasks: tasks/lifecycle-state.yml
+    - name: Start the control plane first if it is stopped
+      ansible.builtin.command:
+        argv: [gcloud, compute, instances, start, "{{ item.item.name }}", "--project={{ lifecycle_project }}", "--zone={{ item.item.zone }}", --quiet]
+      loop: "{{ lifecycle_live.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.item.name == lifecycle_cp_name and (item.stdout | from_json).status == 'TERMINATED'
+      changed_when: true
+    - name: Start stopped workers after starting the control plane
+      ansible.builtin.command:
+        argv: [gcloud, compute, instances, start, "{{ item.item.name }}", "--project={{ lifecycle_project }}", "--zone={{ item.item.zone }}", --quiet]
+      loop: "{{ lifecycle_live.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.item.name in lifecycle_worker_names and (item.stdout | from_json).status == 'TERMINATED'
+      changed_when: true
+    - name: Read current addresses and identities after startup
+      ansible.builtin.command:
+        argv: [gcloud, compute, instances, describe, "{{ item.name }}", "--project={{ lifecycle_project }}", "--zone={{ item.zone }}", --format=json]
+      loop: "{{ lifecycle_vms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: lifecycle_resumed
+      changed_when: false
+      no_log: true
+    - name: Require the same running VMs and unchanged private cluster addresses
+      ansible.builtin.assert:
+        that:
+          - current.id | string == item.item.instance_id | string
+          - current.status == 'RUNNING'
+          - current.networkInterfaces[0].networkIP == item.item.network_interface[0].network_ip
+          - current.networkInterfaces[0].accessConfigs | default([]) | length > 0
+          - current.networkInterfaces[0].accessConfigs[0].natIP | default('') | length > 0
+        fail_msg: "VM identity/private networking changed or a public address is missing. No cluster reset or replacement is attempted."
+      vars:
+        current: "{{ item.stdout | from_json }}"
+      loop: "{{ lifecycle_resumed.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+    - name: Refresh Terraform state and outputs without changing cloud resources
+      ansible.builtin.command:
+        argv: [terraform, "-chdir={{ playbook_dir }}/../gcp", apply, -refresh-only, -auto-approve, -input=false, -no-color]
+      changed_when: true
+      no_log: true
+    - name: Read the refreshed inventory without exposing its contents
+      ansible.builtin.command:
+        argv: [terraform, "-chdir={{ playbook_dir }}/../gcp", output, -json, ansible_inventory]
+      register: refreshed_inventory
+      changed_when: false
+      no_log: true
+    - name: Select the new inventory
+      ansible.builtin.set_fact:
+        lifecycle_inventory: "{{ refreshed_inventory.stdout | from_json }}"
+      no_log: true
+    - name: Verify the refreshed inventory against the running VM addresses
+      ansible.builtin.assert:
+        that:
+          - lifecycle_inventory.all.vars.gcp_project_id == lifecycle_project
+          - inventory_nodes.keys() | sort == lifecycle_vms | map(attribute='name') | sort
+          - inventory_nodes[item.item.name].ansible_host == (item.stdout | from_json).networkInterfaces[0].accessConfigs[0].natIP
+          - inventory_nodes[item.item.name].kubernetes_node_ip == (item.stdout | from_json).networkInterfaces[0].networkIP
+          - inventory_nodes[item.item.name].ansible_ssh_common_args == '-o HostKeyAlias=psia-g34-' ~ (item.item.instance_id | string)
+        fail_msg: "Refreshed Terraform outputs do not match the running cluster. Do not use the old inventory."
+      vars:
+        inventory_nodes: "{{ lifecycle_inventory.all.children.control_plane.hosts | combine(lifecycle_inventory.all.children.workers.hosts) }}"
+      loop: "{{ lifecycle_resumed.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+    - name: Save the refreshed personal inventory atomically
+      ansible.builtin.copy:
+        content: "{{ lifecycle_inventory | to_nice_json }}\n"
+        dest: "{{ playbook_dir }}/../gcp/ansible-inventory.json"
+        mode: "0600"
+      no_log: true
+    - name: Add resumed nodes to this Ansible run
+      ansible.builtin.add_host:
+        name: "{{ item.key }}"
+        groups: "{{ 'control_plane' if item.key == lifecycle_cp_name else 'workers' }}"
+        ansible_host: "{{ item.value.ansible_host }}"
+        ansible_user: "{{ lifecycle_inventory.all.vars.ansible_user }}"
+        ansible_ssh_private_key_file: "{{ lifecycle_inventory.all.vars.ansible_ssh_private_key_file }}"
+        ansible_python_interpreter: "{{ lifecycle_inventory.all.vars.ansible_python_interpreter }}"
+        ansible_ssh_common_args: "{{ item.value.ansible_ssh_common_args }}"
+        kubernetes_node_ip: "{{ item.value.kubernetes_node_ip }}"
+        kubernetes_data_device: "{{ item.value.kubernetes_data_device | default(omit) }}"
+        kubernetes_data_path: "{{ item.value.kubernetes_data_path | default(omit) }}"
+      loop: "{{ (lifecycle_inventory.all.children.control_plane.hosts | combine(lifecycle_inventory.all.children.workers.hosts)) | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+- name: Verify services and the preserved data mount after boot
+  hosts: control_plane:workers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Wait for SSH and Python after startup
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+    - name: Require the existing cluster installation
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: resumed_kubelet
+    - name: Report an installation that was paused before Kubernetes was configured
+      ansible.builtin.assert:
+        that: resumed_kubelet.stat.exists
+        fail_msg: "VMs are running, but Kubernetes is not installed on this node. Run cluster.yml; resume never initializes a new cluster."
+    - name: Wait for containerd and kubelet to become active after boot
+      ansible.builtin.command:
+        argv: [systemctl, is-active, "{{ item }}"]
+      loop: [containerd, kubelet]
+      register: resumed_service
+      until: resumed_service.rc == 0 and resumed_service.stdout | trim == 'active'
+      retries: 60
+      delay: 5
+      changed_when: false
+    - name: Verify the existing data disk without formatting or changing the mount
+      when: kubernetes_data_device is defined
+      block:
+        - name: Read the mounted data filesystem UUID
+          ansible.builtin.command:
+            argv: [findmnt, --noheadings, --raw, --mountpoint, "{{ kubernetes_data_path }}", --output, UUID]
+          register: resumed_mount
+          changed_when: false
+        - name: Read the preserved disk UUID
+          ansible.builtin.command:
+            argv: [blkid, -s, UUID, -o, value, "{{ kubernetes_data_device }}"]
+          register: resumed_disk
+          changed_when: false
+        - name: Require the same data filesystem at its mount path
+          ansible.builtin.assert:
+            that:
+              - resumed_disk.stdout | trim | length > 0
+              - resumed_mount.stdout | trim == resumed_disk.stdout | trim
+            fail_msg: "Data disk did not mount correctly. Inspect the VM; resume will not format or recreate database storage."
+
+- name: Recover administration access and verify the existing application
+  hosts: control_plane
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Wait for the local Kubernetes API
+      ansible.builtin.command: kubectl get --raw=/readyz --request-timeout=10s
+      register: resumed_api
+      until: resumed_api.rc == 0
+      retries: 30
+      delay: 5
+      changed_when: false
+    - name: Recover management access using the current public IP and stable TLS identity
+      ansible.builtin.import_tasks: tasks/fetch-kubeconfig.yml
+    - name: Wait for all nodes to become Ready
+      ansible.builtin.command:
+        argv: [kubectl, wait, --for=condition=Ready, "node/{{ item }}", --timeout=300s]
+      loop: "{{ groups['control_plane'] + groups['workers'] }}"
+      changed_when: false
+    - name: Verify networking and DNS recovered
+      ansible.builtin.command:
+        argv: [kubectl, -n, kube-system, rollout, status, "{{ item }}", --timeout=300s]
+      loop: [daemonset/calico-node, deployment/calico-kube-controllers, deployment/coredns]
+      changed_when: false
+    - name: Wait for the existing databases and applications without redeploying
+      ansible.builtin.command:
+        argv: [kubectl, -n, movie-rec-hub, rollout, status, "{{ item }}", --timeout=600s]
+      loop:
+        - statefulset/users-db
+        - statefulset/profiles-db
+        - statefulset/movie-db
+        - statefulset/reco-db
+        - deployment/ollama
+        - deployment/user-service
+        - deployment/profile-service
+        - deployment/movie-service
+        - deployment/recommendation-service
+        - deployment/frontend
+      changed_when: false
+      when: >-
+        resume_verify_recommendations | default(true) | bool or
+        item not in ['statefulset/reco-db', 'deployment/ollama', 'deployment/recommendation-service']
+    - name: Detect the optional monitoring installation
+      ansible.builtin.command: kubectl get namespace monitoring --ignore-not-found -o name
+      register: resumed_monitoring
+      changed_when: false
+    - name: Wait for monitoring workloads when monitoring is installed
+      ansible.builtin.command:
+        argv: [kubectl, -n, monitoring, rollout, status, "{{ item }}", --timeout=600s]
+      loop:
+        - deployment/prometheus
+        - deployment/grafana
+        - deployment/kube-state-metrics
+        - daemonset/node-exporter
+      when: resumed_monitoring.stdout | trim | length > 0
+      changed_when: false
+    - name: Verify kubectl access from the management container
+      ansible.builtin.command: kubectl get nodes -o wide
+      delegate_to: localhost
+      become: false
+      environment:
+        KUBECONFIG: "{{ lookup('env', 'HOME') }}/.kube/config"
+      changed_when: false
+    - name: Verify frontend readiness at each current public address
+      ansible.builtin.uri:
+        url: "http://{{ hostvars[item].ansible_host }}:30510/actuator/health/readiness"
+        status_code: 200
+        return_content: true
+        use_proxy: false
+        timeout: 10
+      loop: "{{ groups['workers'] }}"
+      delegate_to: localhost
+      become: false
+      register: resumed_frontend
+      until: resumed_frontend.status | default(0) == 200 and resumed_frontend.json.status | default('') == 'UP'
+      retries: 12
+      delay: 5
+    - name: Show the recovered browser address
+      ansible.builtin.debug:
+        msg: "Application recovered: http://{{ hostvars[item].ansible_host }}:30510/"
+      loop: "{{ groups['workers'] }}"

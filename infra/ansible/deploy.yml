@@ -43,7 +43,7 @@
     - name: Refuse a frontend NodePort already used by another application
       ansible.builtin.assert:
         that: item.metadata.namespace == 'movie-rec-hub' and item.metadata.name == 'frontend'
-        fail_msg: "NodePort 30510 is occupied. If the Nginx test is installed, run smoke-test-cleanup.yml first; other Services require review."
+        fail_msg: "NodePort 30510 is occupied. If the Nginx test is installed, run kubectl delete namespace nginx-smoke-test --ignore-not-found=true on the configured cluster first; other Services require review."
       loop: "{{ (existing_services.stdout | from_json)['items'] }}"
       loop_control:
         label: "{{ item.metadata.namespace }}/{{ item.metadata.name }}"

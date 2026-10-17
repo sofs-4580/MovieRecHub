@@ -66,7 +66,7 @@ The Frontend sends the registration to UserService, which saves the user and a `
 If ProfileService is down when someone registers, nothing is lost: the job stays in `pending_profiles` and is retried every 30 seconds. For a few seconds after registration `GET /api/profiles/me` can answer `PROFILE_NOT_READY`.
 
 **Login and sessions**
-1. The Frontend sends the credentials to UserService, which creates the login session and answers with a `JSESSIONID` cookie.
+1. The Frontend sends the credentials to UserService, which stores the login session in PostgreSQL through Spring Session JDBC and answers with a `JSESSIONID` cookie.
 2. The Frontend relays that cookie to the browser untouched.
 3. On every request the Frontend (and ProfileService) ask UserService `GET /internal/auth/session` to find out who the cookie belongs to.
 4. The Frontend has its own session for flash messages, under a different cookie name (`FRONTEND_SESSION`), so it never overwrites the login cookie.
@@ -371,7 +371,7 @@ pre-commit install
 | `port is already allocated` | Another program uses that host port | Change the port in `.env` |
 | Movie catalogue is empty | `TMDB_API_KEY` missing or invalid | Set it in `.env`, then `docker compose up -d` (the seed only runs while the movie table is empty) |
 | "Profile is not available yet" right after registering | Profile creation is asynchronous | Wait a few seconds and refresh |
-| Logged out after restarting UserService | Login sessions are kept in memory | Log in again |
+| Logged out after a cloud pause/resume | The browser address changed, the cookie was lost, or the session expired (30 minutes by default) | Use the current frontend address and log in again; sessions are stored in PostgreSQL |
 | Database container refuses to start after a Postgres upgrade | Old volume from a different major version | `docker compose down -v` (deletes data) |
 | DBeaver asks for a password | Dev databases have none | Leave it empty and test the connection again |
 
@@ -380,7 +380,7 @@ pre-commit install
 
 - **MovieService does not authenticate callers.** It trusts the `X-User-Id` header and the `userId` in a review body (marked as TODO in the code). It must only be reachable from the Frontend.
 - **`/internal/**` endpoints have no authentication.** They are meant for service-to-service calls inside the Docker network. Do not expose them publicly.
-- **Login sessions are in memory** inside UserService (every other piece of state is in PostgreSQL): restarting it logs everyone out, and it cannot be scaled horizontally without a shared session store.
+- **Login sessions are stored in PostgreSQL**, but cookies still depend on the browser address and sessions expire after 30 minutes of inactivity by default. A changed frontend IP after stop/start can require a new login.
 - **Development databases accept connections without a password** (`trust`) and the session cookie is not `Secure` by default. Change both before any real deployment (`SESSION_COOKIE_SECURE=true`, real DB credentials, HTTPS).
 - **MovieService's schema is managed by Hibernate** (`update`), not by migrations.
 - **`PATCH /api/movies/{id}/rating`** lets any caller overwrite a movie's average rating; it exists for internal recalculation.

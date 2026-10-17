@@ -35,7 +35,9 @@ build/
 ### VS Code ###
 .vscode/
 
-/UserService/src/test/
+/UserService/src/test/**
+!/UserService/src/test/scripts/
+!/UserService/src/test/scripts/verify_session_persistence.py
 /ProfileService/src/test/
 /bin/
 
@@ -51,3 +53,16 @@ build/
 *.blg
 missfont.log
 mfput.log
+
+### Local infrastructure tests ###
+/infra/ansible/tests/
+/infra/gcp/tests/
+/infra/registry/tests/
+
+### Optional local Nginx smoke test ###
+/infra/ansible/smoke-test.yml
+/infra/ansible/smoke-test-cleanup.yml
+/kubernetes/smoke-test/
+
+### Local infrastructure documentation ###
+/infra/README.md

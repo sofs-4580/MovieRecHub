@@ -23,6 +23,14 @@ mgmt:
 stop:
     {{compose}} stop management
 
+# Stop the existing cloud workers, then the control plane, preserving disks.
+pause: start
+    {{compose}} exec -T --workdir /workspace/infra/ansible management ansible-playbook -i localhost, pause.yml
+
+# Start the same VMs and recover inventory, kubectl access and application readiness.
+resume: start
+    {{compose}} exec -T --workdir /workspace/infra/ansible management ansible-playbook -i localhost, resume.yml
+
 # Deploy the databases and applications to the existing Kubernetes cluster.
 deploy:
     @test -r infra/management/.local/deployment.yml || { echo "Prepare infra/management/.local/deployment.yml with the published image tag and TMDB key." >&2; exit 1; }

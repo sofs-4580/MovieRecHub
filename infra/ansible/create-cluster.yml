@@ -81,25 +81,5 @@
       register: worker_join
       when: worker_states.results | rejectattr('stat.exists') | list | length > 0
       no_log: true
-    - name: Create the local kubeconfig directory
-      ansible.builtin.file:
-        path: "{{ lookup('env', 'HOME') }}/.kube"
-        state: directory
-        mode: "0700"
-      delegate_to: localhost
-      become: false
-    - name: Copy the administrator kubeconfig to the management container
-      ansible.builtin.fetch:
-        src: /etc/kubernetes/admin.conf
-        dest: "{{ lookup('env', 'HOME') }}/.kube/config"
-        flat: true
-      no_log: true
-    - name: Use the public API address from the management container
-      ansible.builtin.lineinfile:
-        path: "{{ lookup('env', 'HOME') }}/.kube/config"
-        regexp: '^\s+server:'
-        line: "    server: https://{{ ansible_host }}:6443"
-        mode: "0600"
-      delegate_to: localhost
-      become: false
-      no_log: true
+    - name: Configure management access with the public address and private TLS identity
+      ansible.builtin.import_tasks: tasks/fetch-kubeconfig.yml

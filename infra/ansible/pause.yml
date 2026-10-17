@@ -1,0 +1,37 @@
+---
+- name: Stop the existing application VMs without deleting disks
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Validate the existing installation and VM identities
+      ansible.builtin.import_tasks: tasks/lifecycle-state.yml
+    - name: Stop running workers before stopping the control plane
+      ansible.builtin.command:
+        argv: [gcloud, compute, instances, stop, "{{ item.item.name }}", "--project={{ lifecycle_project }}", "--zone={{ item.item.zone }}", --quiet]
+      loop: "{{ lifecycle_live.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.item.name in lifecycle_worker_names and (item.stdout | from_json).status == 'RUNNING'
+      changed_when: true
+    - name: Stop the control plane after all workers have stopped
+      ansible.builtin.command:
+        argv: [gcloud, compute, instances, stop, "{{ item.item.name }}", "--project={{ lifecycle_project }}", "--zone={{ item.item.zone }}", --quiet]
+      loop: "{{ lifecycle_live.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.item.name == lifecycle_cp_name and (item.stdout | from_json).status == 'RUNNING'
+      changed_when: true
+    - name: Verify that every VM is stopped
+      ansible.builtin.command:
+        argv: [gcloud, compute, instances, describe, "{{ item.name }}", "--project={{ lifecycle_project }}", "--zone={{ item.zone }}", "--format=value(status)"]
+      loop: "{{ lifecycle_vms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: paused_vm
+      changed_when: false
+      failed_when: paused_vm.rc != 0 or paused_vm.stdout | trim != 'TERMINATED'
+    - name: Report the preserved installation
+      ansible.builtin.debug:
+        msg: "All cluster VMs are stopped. Disks and data are preserved; disk/registry storage can still incur costs. Use just resume to start the same installation."

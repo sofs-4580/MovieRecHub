@@ -1,0 +1,64 @@
+---
+- name: Require a real run in the configured personal project
+  ansible.builtin.assert:
+    that:
+      - not ansible_check_mode
+      - lookup('env', 'CLOUDSDK_CORE_PROJECT') | length > 0
+      - lookup('env', 'TF_VAR_project_id') == lookup('env', 'CLOUDSDK_CORE_PROJECT')
+    fail_msg: "Use the project's management container and a normal run. --syntax-check is the offline validation mode."
+- name: Read Terraform state locally without exposing its contents
+  ansible.builtin.command:
+    argv: [terraform, "-chdir={{ playbook_dir }}/../gcp", show, -json]
+  register: lifecycle_state_json
+  changed_when: false
+  no_log: true
+- name: Select only the VMs managed by this Terraform configuration
+  ansible.builtin.set_fact:
+    lifecycle_inventory: "{{ state.get('values', {}).get('outputs', {}).get('ansible_inventory', {}).get('value', {}) }}"
+    lifecycle_vms: >-
+      {{ state.get('values', {}).get('root_module', {}).get('resources', []) |
+         selectattr('mode', 'equalto', 'managed') |
+         selectattr('type', 'equalto', 'google_compute_instance') |
+         selectattr('name', 'in', ['control_plane', 'worker']) |
+         map(attribute='values') | list }}
+  vars:
+    state: "{{ lifecycle_state_json.stdout | from_json }}"
+  no_log: true
+- name: Require existing Terraform VMs and a complete cluster inventory
+  ansible.builtin.assert:
+    that:
+      - lifecycle_vms | length >= 2
+      - lifecycle_inventory.get('all', {}).get('vars', {}).get('gcp_project_id', '') == lookup('env', 'CLOUDSDK_CORE_PROJECT')
+      - lifecycle_inventory.get('all', {}).get('children', {}).get('control_plane', {}).get('hosts', {}) | length == 1
+      - lifecycle_inventory.get('all', {}).get('children', {}).get('workers', {}).get('hosts', {}) | length >= 1
+    fail_msg: "No complete installation found in Terraform state. Create VMs and install/deploy the cluster first; pause/resume never create replacements."
+- name: Identify the control plane and workers from the saved inventory
+  ansible.builtin.set_fact:
+    lifecycle_cp_name: "{{ lifecycle_inventory.all.children.control_plane.hosts | first }}"
+    lifecycle_worker_names: "{{ lifecycle_inventory.all.children.workers.hosts | list }}"
+    lifecycle_project: "{{ lifecycle_inventory.all.vars.gcp_project_id }}"
+- name: Require the same project and exact set of managed nodes
+  ansible.builtin.assert:
+    that:
+      - lifecycle_vms | map(attribute='project') | unique | list == [lifecycle_project]
+      - lifecycle_vms | map(attribute='name') | sort == ([lifecycle_cp_name] + lifecycle_worker_names) | sort
+      - lifecycle_vms | selectattr('instance_id', 'defined') | list | length == lifecycle_vms | length
+    fail_msg: "Terraform state and inventory disagree about the cluster. Resolve this before operating VMs."
+- name: Inspect each current VM through the authenticated Google API
+  ansible.builtin.command:
+    argv: [gcloud, compute, instances, describe, "{{ item.name }}", "--project={{ lifecycle_project }}", "--zone={{ item.zone }}", --format=json]
+  loop: "{{ lifecycle_vms }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: lifecycle_live
+  changed_when: false
+  no_log: true
+- name: Reject replaced VMs and operations already in progress
+  ansible.builtin.assert:
+    that:
+      - (item.stdout | from_json).id | string == item.item.instance_id | string
+      - (item.stdout | from_json).status in ['RUNNING', 'TERMINATED']
+    fail_msg: "A VM was replaced or is still changing state. Inspect Google Cloud and Terraform; do not reset SSH trust or recreate disks automatically."
+  loop: "{{ lifecycle_live.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

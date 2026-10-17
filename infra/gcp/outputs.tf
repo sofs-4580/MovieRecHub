@@ -27,8 +27,9 @@ output "ansible_inventory" {
         control_plane = {
           hosts = {
             (google_compute_instance.control_plane.name) = {
-              ansible_host       = google_compute_instance.control_plane.network_interface[0].access_config[0].nat_ip
-              kubernetes_node_ip = google_compute_instance.control_plane.network_interface[0].network_ip
+              ansible_host            = google_compute_instance.control_plane.network_interface[0].access_config[0].nat_ip
+              ansible_ssh_common_args = "-o HostKeyAlias=psia-g34-${google_compute_instance.control_plane.instance_id}"
+              kubernetes_node_ip      = google_compute_instance.control_plane.network_interface[0].network_ip
             }
           }
         }
@@ -36,8 +37,9 @@ output "ansible_inventory" {
           hosts = {
             for index, worker in google_compute_instance.worker : worker.name => merge(
               {
-                ansible_host       = worker.network_interface[0].access_config[0].nat_ip
-                kubernetes_node_ip = worker.network_interface[0].network_ip
+                ansible_host            = worker.network_interface[0].access_config[0].nat_ip
+                ansible_ssh_common_args = "-o HostKeyAlias=psia-g34-${worker.instance_id}"
+                kubernetes_node_ip      = worker.network_interface[0].network_ip
               },
               index == 0 ? {
                 kubernetes_data_device = "/dev/disk/by-id/google-${local.data_device_name}"
