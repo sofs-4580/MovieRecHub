@@ -1,0 +1,117 @@
+# vai dizer com o õr o grafana a correr no cluster e como lá chegar
+# vai ter deployment e service?
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        runAsUser: 472 #user definido pelo grafana
+        runAsGroup: 472
+        runAsNonRoot: true
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.1.0
+          ports:
+            - name: http #port:http em vez de 3000
+              containerPort: 3000 #grafana fica nesta porta do container
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-admin #pass está guardada aqui
+                  key: password
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false" #nng pode criar conta nova na pag de login
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false" #nng entra sem login
+          resources:
+          #baseeei nos outros manifests - rever
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+          # a cada dez segundos, o Kubernetes faz um pedido a /api/health
+          #nquanto não responder bem, o pod está not ready e o service não lhe manda tráfego
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+          #a cada 20 segundos, faz a mesma coisa, se faljar 6 vezes container é reiniciado
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 20
+            failureThreshold: 6
+          #em que pasta do contentor aparece cada volume
+          volumeMounts:
+            - name: provisioning-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: provisioning-dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: dashboards
+              mountPath: /etc/grafana/dashboards
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/grafana
+      volumes:
+#o ConfigMap grafana-provisioning (criado pelo playbook) tem dois ficheiros lá dentro.
+#mas o grafana quer cada um numa pasta diferente
+        - name: provisioning-datasources
+          configMap:
+            name: grafana-provisioning
+            items:
+              - key: datasources.yml
+                path: datasources.yml
+        - name: provisioning-dashboards
+          configMap:
+            name: grafana-provisioning
+            items:
+              - key: dashboards.yml
+                path: dashboards.yml
+        #este fica com todos os json que tivermos
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+        #aqui o grafana vai guardar a sua bdd; esta pasta dura enqunato o pod durar
+        - name: data
+          emptyDir: {}
+---
+# serviço manda trafego para os pods c etiqueta grafana
+#agora deve dar para avrir https://ip_worker:30300
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  type: NodePort
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      nodePort: 30300

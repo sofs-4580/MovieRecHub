@@ -1,0 +1,124 @@
+# poe o prometheus a correr no cluster
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+#a lista do que é permitido ler
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole #nao pode ser Role porque queremos ver fora do namespace
+metadata:
+  name: prometheus
+#get -ver; list -listar; watch - ver mudanças  
+rules:
+  - apiGroups: [""]
+  #nodes/proxy e nodes/metrics: ler as métricas do cAdvisor através do API server, aquele endereço /api/v1/nodes/<nó>/proxy/metrics/cadvisor
+  #é aí que se ve cpu e ram de cada container
+    resources: [nodes, nodes/proxy, nodes/metrics, services, endpoints, pods] #services e endpoint não estao a ser usadas (acho), fui buscar ao template
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+  #sao os endpoints
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+    #ler o endereço /metrics do próprio API server
+  - nonResourceURLs: [/metrics]
+    verbs: [get]
+---
+#dá ao clusterRole prometheus
+#à serviceAccount prometheus do namespace monitoring
+#agora o pod que usar a service account prometheus já pode ler pods e nodes
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+---
+#prometheus
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        runAsNonRoot: true
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.5.0
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            # Short retention keeps the small worker's disk and memory in check.
+            - --storage.tsdb.retention.time=3d
+          ports:
+            - name: http
+              containerPort: 9090
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: data
+          emptyDir: {}
+---
+#endereço interno para o grafana lhe conseguir chegar
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http

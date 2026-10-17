@@ -1,0 +1,106 @@
+#põe a correr um programa que transforma o estado do Kubernetes em métricas
+#precisamos porque nem o cAdvisor nem o node-exporter tratam de coisas mais gerais (tipo: quantos pods tao prontos, quanto cpu pediu cada pod,...)
+#ou seja, precisamos para a dashboard dos clusters
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+---
+# o que pode ler 
+#nunca é pra ficar à escuta
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-state-metrics
+rules:
+  - apiGroups: [""]
+    resources:
+      #- configmaps
+      #- endpoints
+      #- limitranges
+      - namespaces
+      - nodes
+      #- persistentvolumeclaims
+      #- persistentvolumes
+      - pods
+      #- replicationcontrollers
+      #- resourcequotas
+      #- secrets #só diz que existem, não os expoe
+      #- services
+      #- serviceaccounts
+    verbs: [list, watch]
+
+---
+#é a mesma cola do prometheus: estas perms para esta entiadde
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-state-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-state-metrics
+subjects:
+  - kind: ServiceAccount
+    name: kube-state-metrics
+    namespace: monitoring
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      serviceAccountName: kube-state-metrics
+      securityContext:
+        runAsUser: 65534 #nobody
+        runAsNonRoot: true
+      containers:
+        - name: kube-state-metrics
+          image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.15.0
+          args:
+            - --resources=pods,nodes,namespaces
+          ports:
+            - name: http-metrics
+              containerPort: 8080 #metricas do cluster
+            - name: telemetry
+              containerPort: 8081 #as métricas do kube-state-metrics - pra rediness
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http-metrics
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: telemetry
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: kube-state-metrics
+  ports:
+    - name: http-metrics
+      port: 8080
+      targetPort: http-metrics

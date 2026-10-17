@@ -1,0 +1,76 @@
+#põe um sensor em cada VM do cluster. esse sensor lê o estado da máquina e mostra-o em http://<IP_VM>:9100/metrics, para o prometheus ir buscar
+apiVersion: apps/v1
+kind: DaemonSet #queremos um pod (sensor) em cada VM
+metadata:
+  name: node-exporter
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      # Read the host's own network and processes, not the container's.
+      hostNetwork: true
+      hostPID: true
+      # para também correr no control plane (ignora a taint)
+      tolerations:
+        - operator: Exists
+      securityContext:
+        runAsUser: 65534 #nobody
+        runAsNonRoot: true
+      containers:
+        - name: node-exporter
+          image: quay.io/prometheus/node-exporter:v1.9.1
+          args:
+            - --path.procfs=/host/proc
+            - --path.sysfs=/host/sys
+            - --path.rootfs=/host/root
+            # Hide container and kubelet internal mounts; keeps "/" and the database disk.
+            - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/kubelet|var/lib/containerd)($|/)
+          ports:
+            - name: metrics
+              containerPort: 9100
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: metrics
+          livenessProbe:
+            httpGet:
+              path: /
+              port: metrics
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: root
+              mountPath: /host/root
+              #se depois de o pod arrancar, a VM montar um disco novo, o contentor também o vê
+              mountPropagation: HostToContainer
+              readOnly: true
+      #montamos as pastas da vm dentro do container
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: root
+          hostPath:
+            path: /
