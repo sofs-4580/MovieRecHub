@@ -49,7 +49,7 @@ variable "control_plane_machine_type" {
 variable "worker_machine_type" {
   description = "Common machine type for Kubernetes worker VMs."
   type        = string
-  default     = "e2-medium"
+  default     = "e2-standard-4"
   nullable    = false
 
   validation {
@@ -66,7 +66,7 @@ variable "worker_count" {
 
   validation {
     condition     = var.worker_count >= 1 && var.worker_count == floor(var.worker_count)
-    error_message = "The worker count must be a positive integer."
+    error_message = "The worker count must be a positiveworker integer."
   }
 }
 

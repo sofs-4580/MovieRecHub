@@ -93,17 +93,17 @@
         src: "{{ playbook_dir }}/../../kubernetes/services/{{ item }}.yaml.j2"
         dest: "/home/ubuntu/{{ item }}.yaml"
         mode: "0644"
-      loop: [user-service, profile-service, movie-service, frontend]
+      loop: [user-service, profile-service, movie-service, recommendation-service, frontend]
     - name: Apply the four Deployments and Services
       ansible.builtin.command:
         argv: [kubectl, apply, -f, "/home/ubuntu/{{ item }}.yaml"]
-      loop: [user-service, profile-service, movie-service, frontend]
+      loop: [user-service, profile-service, movie-service, recommendation-service, frontend]
       register: application_apply
       changed_when: "' created' in application_apply.stdout or ' configured' in application_apply.stdout"
     - name: Wait for all four Deployments to be Ready
       ansible.builtin.command:
         argv: [kubectl, -n, movie-rec-hub, rollout, status, "deployment/{{ item }}", --timeout=600s]
-      loop: [user-service, profile-service, movie-service, frontend]
+      loop: [user-service, profile-service, movie-service, recommendation-service, frontend]
       changed_when: false
     - name: Verify frontend readiness through every worker's public NodePort
       ansible.builtin.uri:
