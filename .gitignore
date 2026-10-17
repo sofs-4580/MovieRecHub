@@ -38,3 +38,16 @@ build/
 /UserService/src/test/
 /ProfileService/src/test/
 /bin/
+
+### LaTeX ###
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+missfont.log
+mfput.log

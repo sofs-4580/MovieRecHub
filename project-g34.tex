@@ -1,0 +1,153 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathptmx}            % Times-like font
+\usepackage[a4paper,left=2cm,right=2cm,top=1.5cm,bottom=1.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlist{nosep,leftmargin=*}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{8pt}{3pt}
+\titlespacing*{\subsection}{0pt}{6pt}{2pt}
+
+% Text that was highlighted yellow in the Word version is shown in red.
+\newcommand{\red}[1]{\textcolor{red}{#1}}
+
+\begin{document}
+
+\begin{center}
+{\Large\bfseries Movie Rec Hub: a Microservice Movie Recommendation Platform}\\[3pt]
+PSIA Project Report -- Group 34\\[3pt]
+Group members: number -- Gon\c{c}alo Torcato, 120202 -- Sara Nascimento, 120232 -- Sofia Rodrigues\\[3pt]
+Video: link
+\end{center}
+
+\section*{1 Introduction}
+
+Movie Rec Hub is a web application where users browse movies, write reviews, organise movies into lists and receive personalised recommendations. The recommendations are produced by a large language model (LLM) that takes into account each user's lists, reviews and favourite genres.
+
+The application is built as a set of Spring Boot microservices, each with its own PostgreSQL database. It runs locally with Docker Compose and in the Google Cloud on a Kubernetes cluster created with Terraform and configured with Ansible. The system also includes an LLM-based recommendation service and a monitoring stack with Prometheus and Grafana. \red{As an advanced feature, the application keeps its state across a full shutdown of the infrastructure.}
+
+This report presents the design and deployment of the base system, including monitoring (Section~2), the persistent state feature (Section~3) and an evaluation of throughput and latency as the number of clients grows (Section~4). The video linked above shows the system running in the cloud.
+
+\section*{2 System Design and Architecture}
+
+\begin{center}
+\includegraphics[width=0.8\linewidth]{DomainModel.png}\\[2pt]
+\emph{Fig. 1. Architecture of Movie Rec Hub.}
+\end{center}
+
+The system is composed of five services that communicate through REST APIs:
+\begin{itemize}
+  \item \textbf{Frontend:} the only entry point for users. It renders the web pages and calls the other services.
+  \item \textbf{UserService:} accounts, login and sessions.
+  \item \textbf{ProfileService:} user profiles, favourite genres and decades.
+  \item \textbf{MovieService:} the movie catalogue, reviews and movie lists.
+  \item \textbf{RecommendationService:} personalised recommendations using an LLM served by Ollama (Section~2.5).
+\end{itemize}
+
+Each service owns its database (users, profiles, movies and recommendations), so services never share tables and can be deployed and scaled independently.
+
+\subsection*{2.1 Frontend}
+
+The Frontend is a Spring Boot application that renders pages on the server with Thymeleaf. A controller prepares the data in a Model, and Thymeleaf fills an HTML template before it is sent to the browser, so the browser receives a complete page. Templates use \texttt{th:} attributes inside plain HTML: \texttt{th:if} shows a block only when a condition holds, \texttt{th:text} inserts values, and \texttt{th:replace} includes reusable fragments, such as the sidebar, the alerts and the movie grid, defined once in a shared layout.
+
+The Frontend talks to each backend service through a dedicated client class (for example, \texttt{MovieServiceClient}) with its own DTOs. The main pages are the movie catalogue with a genre filter, the movie details with reviews, the user's lists, login and registration, the profile pages and the ``For you'' recommendations page.
+
+\subsection*{\red{2.2 UserService and Testing}}
+
+\subsection*{\red{2.3 ProfileService and Testing}}
+
+\subsection*{2.4 MovieService and Testing}
+
+The MovieService manages the movie catalogue, the reviews and the users' movie lists. It exposes a REST API under \texttt{/api/movies}, \texttt{/api/reviews} and \texttt{/api/lists}, and stores its data in its own PostgreSQL database.
+
+On first start, when the database is empty, the service fills the catalogue from The Movie Database (TMDB) API: it fetches the top-rated movies and stores, for each one, the title, release year, genres, synopsis, director and main actors.
+
+The data model has four entities:
+\begin{itemize}
+  \item \textbf{Movie:} title, release year, genres, synopsis, director, actors and the average rating.
+  \item \textbf{Review:} a rating from 1 to 5 and a comment, written by a user about a movie. A user can review each movie only once (unique constraint on user and movie). Every time a review is created or deleted, the movie's average rating is recalculated.
+  \item \textbf{MovieList:} a named list owned by a user, of type \texttt{WATCHLIST}, \texttt{FAVORITES} or \texttt{CUSTOM}, and \texttt{PUBLIC} or \texttt{PRIVATE}. A user cannot have two lists with the same name.
+  \item \textbf{MovieListItem:} a movie inside a list, with its position and the date it was added. The same movie cannot appear twice in one list.
+\end{itemize}
+
+The service enforces these rules itself. A private list is only visible to its owner, and only the owner can change or delete a list. A global exception handler translates errors into clear HTTP codes. The API supports listing movies with a genre filter, searching by title, director or actor, filtering by year, creating and deleting reviews, and creating, renaming, deleting and editing lists.
+
+The MovieService follows a layered design: entities, repositories (Spring Data JPA), services with the business rules, and REST controllers. It is covered by 156 automated tests in 10 test classes, each layer tested in isolation:
+\begin{itemize}
+  \item \textbf{Controllers (53 tests):} \texttt{@WebMvcTest} with MockMvc, with the service layer replaced by mocks.
+  \item \textbf{Services (53 tests):} JUnit~5 and Mockito, with the repositories mocked.
+  \item \textbf{Repositories (39 tests):} \texttt{@DataJpaTest} on an in-memory H2 database, so no PostgreSQL instance is needed.
+  \item \textbf{Entities (11 tests):} plain JUnit~5.
+\end{itemize}
+
+\subsection*{\red{2.5 RecommendationService and Testing}}
+
+\red{COMPLETAR}
+
+The ``For you'' page in the Frontend has two parts. In the first, the user writes a free-text request (for example, \red{O QUE VAMOS POR NO VIDEO}) and the LLM answers with a list of movies. In the second, the page shows recommendations prepared in the background from the user's lists, reviews and favourite genres. When the page opens, the Frontend sends the user's favourite genres and decades from the ProfileService to the RecommendationService, so the recommendations stay up to date.
+
+\subsection*{2.6 Deployment}
+
+Each service is packaged as a Docker image, built in two stages: Maven compiles the application in a build image, and only the resulting JAR is copied to a smaller Java runtime image. Locally, Docker Compose starts the whole system with one command: the five services, their four PostgreSQL databases, Ollama, Prometheus and Grafana.
+
+\red{COMPLETAR C A PARTE CLOUD}
+
+\subsection*{2.7 Monitoring with Prometheus and Grafana}
+
+All five services expose metrics at \texttt{/actuator/prometheus} using Spring Boot Actuator and Micrometer, which required only two dependencies and three configuration properties. One of them enables a histogram of HTTP request durations, so that Grafana can compute latency percentiles (p50 and p95) instead of only the average. The average hides slow requests: if 95 requests take 50~ms and 5 take 2~s, the average is about 150~ms, a value no user actually experienced. The p50 shows the typical user's latency, and the p95 shows the delay felt by the slowest 5\% of requests, which is where performance problems appear first.
+
+Prometheus collects the metrics every 15 seconds and Grafana displays them. Both are configured from files in the repository (provisioning), so the same dashboards appear automatically locally and in the cluster. We built two dashboards:
+\begin{itemize}
+  \item \textbf{Services:} it shows availability, requests per second, latency (p50, p95 and maximum), the slowest endpoints, the error rate (4xx and 5xx), JVM memory, CPU, threads and database connection pools.
+  \item \textbf{Cluster:} adapted from a community dashboard (\url{https://github.com/dotdc/grafana-dashboards-kubernetes}), with a section we added for the application: pods not ready, restarts per pod and free space on the database disk. It also shows CPU and memory per node and per namespace.
+\end{itemize}
+
+\begin{center}\red{PRINTS}\\[2pt]\emph{Fig. 2. Services dashboard in Grafana.}\end{center}
+
+In Kubernetes, the monitoring stack runs in its own namespace and is deployed with an Ansible playbook that follows the structure of the application's deployment playbook. Because pods change IP address whenever they are recreated, Prometheus discovers its targets through the Kubernetes API instead of using fixed addresses. It collects metrics from four sources (Fig.~3): the Spring services, node-exporter (one pod per VM, for CPU, memory and disks), cAdvisor (built into each node's kubelet, for each container) and kube-state-metrics (the state of Kubernetes objects, such as ready pods and restarts).
+
+\begin{center}\red{DIAGRAMA AQUI}\\[2pt]\emph{Fig. 3. Monitoring architecture in the Kubernetes cluster.}\end{center}
+
+Security was considered throughout. Prometheus and kube-state-metrics have read-only permissions, and kube-state-metrics can only read pods, nodes and namespaces. Prometheus has no login, so it is reachable only inside the cluster; external access goes through Grafana, which requires a password and blocks sign-up and anonymous access. The Grafana password is kept out of Git and passed to Kubernetes as a Secret, without being written anywhere outside \texttt{deployment.yml}.
+
+\section*{\red{3 Advanced Components: Persistent State}}
+
+\section*{4 Evaluation}
+
+\subsection*{4.1 Method}
+
+\red{TO-DO - PRINTS E TAL}
+
+\subsection*{4.2 Results}
+
+\begin{center}\emph{Table 1. Throughput and latency for an increasing number of clients.}\end{center}
+\vspace{-4pt}
+\begin{center}
+\begin{tabular}{rllll}
+\toprule
+\textbf{Clients} & \textbf{Throughput (req/s)} & \textbf{p50 latency (ms)} & \textbf{p95 latency (ms)} & \textbf{Errors (\%)}\\
+\midrule
+1  & & & & \\
+2  & & & & \\
+4  & & & & \\
+8  & & & & \\
+16 & & & & \\
+32 & & & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{5 Conclusion}
+
+\end{document}
