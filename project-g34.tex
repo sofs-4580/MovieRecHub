@@ -35,7 +35,7 @@ Video: link
 
 Movie Rec Hub is a web application where users browse movies, write reviews, organise movies into lists and receive personalised recommendations. The recommendations are produced by a large language model (LLM) that takes into account each user's lists, reviews and favourite genres.
 
-The application is built as a set of Spring Boot microservices, each with its own PostgreSQL database. It runs locally with Docker Compose and in the Google Cloud on a Kubernetes cluster created with Terraform and configured with Ansible. The system also includes an LLM-based recommendation service and a monitoring stack with Prometheus and Grafana. \red{As an advanced feature, the application keeps its state across a full shutdown of the infrastructure.}
+The application is built as a set of Spring Boot microservices, each with its own PostgreSQL database. It runs locally with Docker Compose and in the Google Cloud on a Kubernetes cluster created with Terraform and configured with Ansible. The system also includes an LLM-based recommendation service and a monitoring stack with Prometheus and Grafana. As an advanced feature, the application keeps its state across a full shutdown of the infrastructure.
 
 This report presents the design and deployment of the base system, including monitoring (Section~2), the persistent state feature (Section~3) and an evaluation of throughput and latency as the number of clients grows (Section~4). The video linked above shows the system running in the cloud.
 
@@ -63,9 +63,35 @@ The Frontend is a Spring Boot application that renders pages on the server with 
 
 The Frontend talks to each backend service through a dedicated client class (for example, \texttt{MovieServiceClient}) with its own DTOs. The main pages are the movie catalogue with a genre filter, the movie details with reviews, the user's lists, login and registration, the profile pages and the ``For you'' recommendations page.
 
-\subsection*{\red{2.2 UserService and Testing}}
+\subsection*{2.2 UserService and Testing}
 
-\subsection*{\red{2.3 ProfileService and Testing}}
+The UserService owns accounts and login sessions in its own PostgreSQL database. It exposes registration and login under \texttt{/api/auth} and password changes at \texttt{/api/users/me/password}. Usernames are trimmed and lower-cased, with uniqueness enforced by the database as well as the application. Passwords are stored as salted PBKDF2 hashes, never as plain text. Changing a password requires both an authenticated session and the current password.
+
+Login creates a fresh session and returns a \texttt{JSESSIONID} cookie with \texttt{HttpOnly} and \texttt{SameSite=Strict}. The internal endpoint \texttt{GET /internal/auth/session} returns the authenticated user id, allowing ProfileService to verify the cookie without accessing the users database. Sessions are stored with Spring Session JDBC rather than only in application memory (Section~3).
+
+Registration also saves a profile-creation job in \texttt{pending\_profiles}, in the same transaction as the account. A background worker sends the username and initial favourite genres to ProfileService and retries failed deliveries. This lets users register even when ProfileService is temporarily unavailable. The job survives a restart, and repeated delivery does not overwrite an edited profile.
+
+The service has 97 automated tests in 12 classes:
+\begin{itemize}
+  \item \textbf{Unit tests (67):} JUnit~5 and Mockito cover request validation, JSON responses, the user model, password hashing, session handling and the HTTP client used for profile creation.
+  \item \textbf{Integration tests (30):} \texttt{@DataJpaTest} and \texttt{@SpringBootTest} with real PostgreSQL cover database constraints and migrations, registration, login, password changes, account isolation, concurrent updates and the profile-creation queue, including failure, retry and rollback.
+\end{itemize}
+
+\subsection*{2.3 ProfileService and Testing}
+
+The ProfileService stores display names, biographies, favourite genres and favourite decades in its own PostgreSQL database. A profile uses the account id from UserService, without a foreign key across databases. Flyway migrations create and version the schema, while Hibernate validates it at startup.
+
+Authenticated users read and partially update their own profile through \texttt{GET/PATCH /api/profiles/me}. The owner is selected from the verified session, rather than an id supplied in the request body. Omitted fields keep their previous values, and invalid fields or preferences are rejected. Users can also browse profiles with pagination, search by username and view another user's public profile under \texttt{/api/profiles}.
+
+ProfileService forwards the session cookie to UserService for each protected request. An invalid session returns 401, while an unavailable UserService returns 503. Initial profiles are created through \texttt{PUT /internal/profiles/\{userId\}}. This operation is idempotent: retries leave existing biography and preferences unchanged. A background worker retrieves missing usernames for older profiles through UserService's internal API.
+
+The service has 42 automated tests in 5 classes:
+\begin{itemize}
+  \item \textbf{Session client (4 tests):} checks the cookie sent to UserService and distinguishes authentication failure from service unavailability using a local HTTP server.
+  \item \textbf{Integration tests (38):} persistence and HTTP tests with PostgreSQL cover profile data, genres and decades, schema constraints, partial updates, ownership, public search and pagination, username backfill and concurrent or repeated initial creation. UserService calls are mocked in the HTTP endpoint tests.
+\end{itemize}
+
+Both services run unit tests with \texttt{mvn test} and integration tests with \texttt{mvn -Pintegration-tests verify}. A separate Python script creates two temporary PostgreSQL instances and runs both services to check registration during an outage, recovery after restart, repeated delivery and two workers processing the queue.
 
 \subsection*{2.4 MovieService and Testing}
 
@@ -125,7 +151,9 @@ Each service is packaged as a Docker image, built in two stages: Maven compiles 
 JAR is copied to a smaller Java runtime image. Locally, Docker Compose starts the whole system with one command: the five services, their
 four PostgreSQL databases, Ollama, Prometheus and Grafana.
 
-\red{COMPLETAR C A PARTE CLOUD}
+In Google Cloud, Terraform creates three virtual machines: one control plane and two workers, plus the persistent storage described in Section~3. The five application images are published to Google Artifact Registry. Ansible configures the machines, installs Kubernetes with kubeadm and Calico networking, and applies the manifests for the databases, Ollama and applications. The frontend is exposed on port \texttt{30510} of either worker; backend services and databases communicate through internal Kubernetes Services.
+
+The deployment tools run in a local Docker management container. After configuring Google credentials and the TMDB key, publishing the images and preparing the cluster, \texttt{just deploy} installs the databases before the applications and checks their readiness. Monitoring is deployed separately (Section~2.7). The complete setup and update instructions are in \texttt{infra/README.md}.
 
 \subsection*{2.7 Monitoring with Prometheus and Grafana}
 
@@ -145,7 +173,30 @@ In Kubernetes, the monitoring stack runs in its own namespace and is deployed wi
 
 Security was considered throughout. Prometheus and kube-state-metrics have read-only permissions and kube-state-metrics can only read pods, nodes and namespaces. Prometheus has no login, so it is reachable only inside the cluster; external access goes through Grafana, which requires a password and blocks sign-up and anonymous access. The Grafana password is kept out of Git and passed to Kubernetes as a Secret, without being written anywhere outside \texttt{deployment.yml}.
 
-\section*{\red{3 Advanced Components: Persistent State}}
+\section*{3 Advanced Components: Persistent State}
+
+The advanced feature allows the entire Google Cloud cluster to be switched off and later restarted while keeping the application's saved data. Accounts, profiles and preferences, movie lists, reviews and automatic recommendations remain available after recovery. Users can continue using the application without recreating their accounts or entering their information again.
+
+\subsection*{3.1 Database storage and sessions}
+
+The four PostgreSQL databases save their data on a dedicated persistent disk, separate from the operating system disk. Kubernetes connects each database to its own storage area on that disk. The data is therefore kept outside the application containers and can be reused when containers or machines restart. Terraform and Ansible automate the storage setup, preserving existing data on later runs.
+
+UserService also stores login sessions in PostgreSQL. This allows a valid login to survive a service restart, as long as the browser still has the corresponding cookie. Sessions remain subject to the normal 30-minute inactivity timeout. A change to the application's public IP may also require the user to log in again, even though the account and its data have been preserved.
+
+\subsection*{3.2 Stopping and recovering the cluster}
+
+Two commands automate the shutdown and recovery of the existing installation. Before acting, they check that the selected machines belong to the expected Google Cloud project and match the recorded installation.
+\begin{itemize}
+  \item \textbf{Pause:} \texttt{just pause} stops the workers before the control plane, confirms that all three machines are off and keeps their disks and saved data.
+  \item \textbf{Resume:} \texttt{just resume} starts the same machines, bringing the control plane back before the workers. It updates connection details when public addresses change and checks that storage, networking, databases, application services and Ollama have recovered. Monitoring services are also checked when installed.
+\end{itemize}
+The existing installation and saved data are reused, so recovery does not require a new deployment.
+
+\subsection*{3.3 Validation and limitations}
+
+The cloud test confirmed that all three machines were switched off and later returned with the same identifiers. Existing accounts could log in again, and profiles, favourite genres and decades, watchlist contents and reviews were preserved. A comparison of the database records before and after shutdown also confirmed that the saved recommendations and their generation details were unchanged. This showed that previous results had been recovered, rather than generated again. A separate local test restarted UserService and PostgreSQL to verify that valid sessions could be recovered and that expired or replaced sessions were rejected.
+
+The current design keeps recovery simple, but all four databases depend on worker-1 and its data disk. They cannot automatically move to another machine if that worker fails. Deleting the infrastructure with \texttt{terraform destroy} also deletes the data disk; recovering from disk loss would require a separate backup mechanism. The persistence guarantee covers the application data in PostgreSQL. Prometheus history, Grafana's internal data and downloaded Ollama models use temporary storage and are outside this guarantee; saved application recommendations remain in the database.
 
 \section*{4 Evaluation}
 
