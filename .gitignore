@@ -35,11 +35,11 @@ build/
 ### VS Code ###
 .vscode/
 
-/UserService/src/test/**
-!/UserService/src/test/scripts/
-!/UserService/src/test/scripts/verify_session_persistence.py
-/ProfileService/src/test/
 /bin/
+
+### Python ###
+__pycache__/
+*.py[cod]
 
 ### LaTeX ###
 *.aux
