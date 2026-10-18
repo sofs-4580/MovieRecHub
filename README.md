@@ -38,7 +38,7 @@ Core features:
 
 ### Demonstration Video
 
-> To watch the demo, see the [demo video on youtube](OFFICIAL_VIDEO_LINK).
+> To watch the demo, see the [demo video on youtube](https://youtu.be/pQT43yEXKmU).
 
 ## Architecture
 
