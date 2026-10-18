@@ -336,14 +336,35 @@ docker compose up -d --build movie-service
 
 ## Testing
 
-MovieService has unit tests (services, entities), repository tests (in-memory H2) and controller tests:
+Every service except the Frontend has automated tests (320 in total):
+
+| Service | Tests | Kind |
+|---|---|---|
+| UserService | 60 | 30 unit tests and 30 integration tests (real PostgreSQL) |
+| ProfileService | 38 | 4 unit tests and 34 integration tests (real PostgreSQL) |
+| MovieService | 156 | Unit, repository (in-memory H2) and controller tests |
+| RecommendationService | 66 | Unit tests (JUnit 5 + Mockito), no database and no Ollama |
+| Frontend | – | No automated tests |
+
+Unit tests need nothing else running:
 
 ```bash
-cd MovieService
-mvn test
+cd MovieService && mvn test
+cd RecomendationService && mvn test
+cd UserService && mvn test          # unit tests only
+cd ProfileService && mvn test       # unit tests only
 ```
 
-> **Note:** `UserService/src/test/` and `ProfileService/src/test/` are listed in `.gitignore`, so their tests are not versioned.
+The integration tests of UserService and ProfileService (`*IT` classes) run only with the `integration-tests` Maven profile and need a PostgreSQL database, given through three environment variables. Use a throwaway database, not the one you use for development:
+
+```bash
+export TEST_DB_URL=jdbc:postgresql://localhost:5433/<test_database>
+export TEST_DB_USERNAME=<user>
+export TEST_DB_PASSWORD=<password>
+cd UserService && mvn verify -Pintegration-tests
+```
+
+The quality of the recommendation model cannot be checked with unit tests. [`RecomendationService/scripts/prompt-tests.sh`](RecomendationService/scripts/prompt-tests.sh) sends 22 typed requests to the real model, and the results are in [`prompt-test.md`](RecomendationService/scripts/prompt-test.md).
 
 
 ## Code Quality and Conventions
