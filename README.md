@@ -34,6 +34,7 @@ Core features:
 - Personal movie lists (Watchlist, Favorites and custom lists, public or private)
 - Public profiles with display name, bio, favourite genres and decades
 - Recommendations based on the user's lists, powered by a local LLM
+- Monitoring with Prometheus and Grafana (locally and on Kubernetes)
 
 ### Demonstration Video
 
@@ -54,8 +55,12 @@ The **Frontend** talks to the services over HTTP. UserService and ProfileService
 | ProfileService | `profile-service` | `8082` | `profiles-db` (`5434`) | `/actuator/health` |  integrated |
 | MovieService | `movie-service` | `8083` | `movie-db` (`5435`) | `/actuator/health` |  integrated |
 | RecommendationService | `recommendation-service` | `8084` | `reco-db` (`5436`) | `/actuator/health` |  integrated (needs Ollama) |
+| Prometheus | `prometheus` | `9090` | – | `/-/healthy` | monitoring |
+| Grafana | `grafana` | `3000` | – | `/api/health` | monitoring |
 
 > **Note:** the **Frontend** is the only part meant to be opened in a browser. The backend services also publish a port on `127.0.0.1`, but only to test them with `curl`/Postman and look at their databases.
+
+> **Note:** Prometheus and Grafana run as containers in Docker Compose and as Pods in the `monitoring` namespace on Kubernetes.
 
 ### How the pieces cooperate
 
@@ -90,7 +95,7 @@ If ProfileService is down when someone registers, nothing is lost: the job stays
 
 ```plaintext
 g34/
-├── docker-compose.yml          --> Whole stack (databases, services, Ollama, frontend)
+├── docker-compose.yml          --> Whole stack (databases, services, Ollama, frontend, monitoring)
 ├── justfile                    --> Shortcuts for the Kubernetes deployment (just deploy, ...)
 ├── DomainModel.drawio / .png   --> Domain model
 ├── .env.example                --> Variables for docker-compose (copy to .env)
@@ -113,9 +118,12 @@ g34/
 │   ├── gcp/                    --> Terraform: VMs, disk, firewall
 │   ├── registry/               --> Terraform: Artifact Registry
 │   ├── images/                 --> Build and publish the 5 images
-│   ├── ansible/                --> Cluster, databases and application playbooks
+│   ├── ansible/                --> Cluster, databases, application and monitoring playbooks
 │   └── management/             --> Container with gcloud, terraform, ansible, kubectl
-└── kubernetes/                 --> Manifests: databases, storage, Ollama, services
+├── kubernetes/                 --> Manifests: databases, storage, Ollama, services
+├── monitoring/                 --> Prometheus configuration and Grafana dashboards
+├── scripts/                    --> Load test
+└── report/                     --> Figures used in the report
 ```
 
 Every service folder has its own `README.md` with endpoints, configuration and database details.
@@ -222,6 +230,26 @@ The Spring Boot services take about one to two minutes to become Ready after a d
 - Public IPs change when VMs are resized, stopped or recreated: run `terraform refresh` and regenerate the Ansible inventory before `just deploy`.
 - Do not run the full `cluster.yml` again once the databases exist; `just deploy` updates the applications.
 - Run `terraform destroy` in `infra/gcp` when you stop working: the cluster costs roughly 0.36 USD per hour.
+
+## Monitoring
+
+All five services expose Prometheus metrics at `/actuator/prometheus` (Spring Boot Actuator and Micrometer), including a histogram of HTTP request durations, so Grafana can show p50 and p95 latency. Prometheus collects the metrics every 15 seconds. Grafana shows two dashboards, loaded automatically from the files in `monitoring/` (folder **Movie Rec Hub**):
+
+| Dashboard | Shows |
+|---|---|
+| Movie Rec Hub - Services | Availability, requests per second, latency (p50, p95, max), slowest endpoints, error rate, JVM memory, CPU, threads, connection pools |
+| Movie Rec Hub - Cluster | CPU and memory per node and namespace, pods not ready, restarts per pod, free space on the database disk |
+
+**Locally** it starts with `docker compose up`: Grafana at http://localhost:3000 (default login `admin` / `admin`) and Prometheus at http://localhost:9090. The host ports can be changed with `GRAFANA_PORT` and `PROMETHEUS_PORT`.
+
+**On Kubernetes** it is installed after `just deploy`. Copy `infra/ansible/deployment.example.yml` settings into your private `infra/management/.local/deployment.yml` and fill in `grafana_admin_password` (12 or more characters). Then, inside `just mgmt`:
+
+```bash
+cd /workspace/infra/ansible
+ansible-playbook monitoring.yml -e @../management/.local/deployment.yml
+```
+
+Open Grafana at `http://<worker public IP>:30300` with user `admin` and the password you chose. Prometheus has no login, so it is only reachable inside the cluster. It finds the services through the Kubernetes API and also collects node-exporter, cAdvisor and kube-state-metrics data. The playbook `monitoring-cleanup.yml` removes the monitoring tools without touching the application or its databases.
 
 
 ## Databases
@@ -340,8 +368,8 @@ Every service except the Frontend has automated tests (320 in total):
 
 | Service | Tests | Kind |
 |---|---|---|
-| UserService | 60 | 30 unit tests and 30 integration tests (real PostgreSQL) |
-| ProfileService | 38 | 4 unit tests and 34 integration tests (real PostgreSQL) |
+| UserService | 97 | 67 unit tests and 30 integration tests (real PostgreSQL) |
+| ProfileService | 42 | 4 unit tests and 38 integration tests (real PostgreSQL) |
 | MovieService | 156 | Unit, repository (in-memory H2) and controller tests |
 | RecommendationService | 66 | Unit tests (JUnit 5 + Mockito), no database and no Ollama |
 | Frontend | – | No automated tests |
