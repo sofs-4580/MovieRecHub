@@ -28,7 +28,7 @@
 {\Large\bfseries Movie Rec Hub: a Microservice Movie Recommendation Platform}\\[3pt]
 PSIA Project Report - Group 34\\[3pt]
 Group members: 109358 - Gon\c{c}alo Torcato, 120202 - Sara Nascimento, 120232 - Sofia Rodrigues\\[3pt]
-Video: \href{https://youtu.be/pQT43yEXKmU}{https://youtu.be/pQT43yEXKmU}
+Video: \href{https://youtu.be/pLkDlg-nCRM}{https://youtu.be/pLkDlg-nCRM}
 \end{center}
 
 \section*{1 Introduction}
@@ -202,27 +202,31 @@ The current design keeps recovery simple, but all four databases depend on worke
 
 \subsection*{4.1 Method}
 
-\red{TO-DO - PRINTS E TAL}
+To test the system we wrote a load generator in Java (\texttt{scripts/LoadTest.java}). It sends HTTP requests to the public address of the Frontend to simulate real users.
+Before the test starts the program creates one account per client and logs in with it, so that each client has its own session. Then, it runs several stages with an increasing number of clients (1, 2, 8, 32, 128 and 512). Each client is a thread that sends one request, waits for the answer and immediately sends the next one (no time in between respose-request). The pages are picked at random to cover all the services: the catalogue and movie details (MovieService), the user's lists, the profiles (ProfileService) and the recommendations page (RecommendationService) - a client also asks the model for recommendations (with a small probability), limited to 3 of these requests per client and per stage, because each one can take tens of seconds.
+Each stage has 10 seconds of warm-up (which we don´t not measure), followed by 60 seconds of measurement and a 20-second pause (so that we can tell the stages apart in Grafana). For each stage we report the throughput (successful requests per second), the median (p50) and 95th percentile (p95) of the latency, and the percentage of failed requests (any answer other than HTTP 200, or a timeout). Requests that are still waiting when the stage ends are not counted.
+We ran the test in both environment: in the cluster in Google Cloud and locally. During both runs we followed the system in the Grafana dashboard.
 
 \subsection*{4.2 Results}
 
-\begin{center}\emph{Table 1. Throughput and latency for an increasing number of clients.}\end{center}
-\vspace{-4pt}
-\begin{center}
-\begin{tabular}{rllll}
-\toprule
-\textbf{Clients} & \textbf{Throughput (req/s)} & \textbf{p50 latency (ms)} & \textbf{p95 latency (ms)} & \textbf{Errors (\%)}\\
-\midrule
-1  & & & & \\
-2  & & & & \\
-4  & & & & \\
-8  & & & & \\
-16 & & & & \\
-32 & & & & \\
-\bottomrule
-\end{tabular}
-\end{center}
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{loadtest-cloud.png}\\
+\small (a) Cloud
+\end{minipage}\hfill
+\begin{minipage}{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{loadtest-local.png}\\
+\small (b) Local
+\end{minipage}
+\caption{Output of the load test: throughput (\emph{pedidos/s}), p50 and p95 latency and error rate for each number of clients.}
+\label{fig:loadtest}
+\end{figure}
 
-\section*{5 Conclusion}
+\paragraph{Latency.} With few clients the latency in the cloud is about 130~ms, while locally it is about 16~ms (Figure~\ref{fig:loadtest}). Most of this difference is the round trip over the Internet between the laptop and the cluster (in previous tests we observed that the Internet speed has a large impact on the results). Because each client waits for the answer before sending the next request, this also limits the throughput of a single client in the cloud to a few requests per second. Up to 32 clients the median latency stays almost constant in both setups, so the system is not yet under pressure. From 128 clients on, the latency in the cloud grows quickly (p50 of about 1~s and p95 of 3.3~s), and with 512 clients the median goes above 8~s.
+
+\paragraph{Throughput and saturation.} In the cloud, the throughput grows until 128 clients (47.2 req/s) and then drops with 512 clients (35.4 req/s), while 27.4\% of the requests fail (most of them because they reach the timeout). This means that the system saturated somewhere between 128 and 512 clients (adding more clients was only making the queues longer). Locally, the error rate with 512 clients was lower (7.39\%), as expected.
 
 \end{document}
