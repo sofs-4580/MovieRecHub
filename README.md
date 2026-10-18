@@ -177,6 +177,10 @@ docker compose ps
 | UserService (REST) | http://localhost:8081 |
 | ProfileService (REST) | http://localhost:8082 |
 | MovieService (REST) | http://localhost:8083 |
+| RecommendationService (REST) | http://localhost:8084 |
+| Grafana (dashboards) | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
+
 
 1. Open http://localhost:8080 and click **Register**.
 2. Pick a username (3–30 characters: lowercase letters, digits, `_`), a **password with at least 12 characters** and at least one favourite genre.
