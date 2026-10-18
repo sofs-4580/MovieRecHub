@@ -40,6 +40,9 @@ Core features:
 
 > To watch the demo, see the [demo video on youtube](https://youtu.be/pQT43yEXKmU).
 
+> **Note:** the official video shows the application already running on the cloud cluster, so it does not include the infrastructure build (creating the VMs and Kubernetes cluster, publishing the images and running the deployment). That process was recorded separately: see the
+[deployment video](https://drive.google.com/file/d/1qKnY1MhyN-pFYNAMLfd3pG8QvVGAjFlN/view?usp=sharing).
+
 ## Architecture
 
 ![Domain Model](DomainModel.png)
