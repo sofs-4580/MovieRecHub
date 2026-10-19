@@ -37,12 +37,12 @@ Movie Rec Hub is a web application where users browse movies, write reviews, org
 
 The application is built as a set of Spring Boot microservices, each with its own PostgreSQL database. It runs locally with Docker Compose and in the Google Cloud on a Kubernetes cluster created with Terraform and configured with Ansible. The system also includes an LLM-based recommendation service and a monitoring stack with Prometheus and Grafana. As an advanced feature, the application keeps its state across a full shutdown of the infrastructure.
 
-This report presents the design and deployment of the base system, including monitoring (Section~2), the persistent state feature (Section~3) and an evaluation of throughput and latency as the number of clients grows (Section~4). The video linked above shows the system running in the cloud.
+This report presents the design and deployment of the base system, including monitoring (Section~2.7), the persistent state feature (Section~3) and an evaluation of throughput and latency as the number of clients grows (Section~4). The video linked above shows the system running in the cloud.
 
 \section*{2 System Design and Architecture}
 
 \begin{center}
-\includegraphics[width=0.8\linewidth]{DomainModel.png}\\[2pt]
+\includegraphics[width=0.7\linewidth]{DomainModel.png}\\[2pt]
 \emph{Fig. 1. Architecture of Movie Rec Hub.}
 \end{center}
 
@@ -69,7 +69,7 @@ The UserService owns accounts and login sessions in its own PostgreSQL database.
 
 Login creates a fresh session and returns a \texttt{JSESSIONID} cookie with \texttt{HttpOnly} and \texttt{SameSite=Strict}. The internal endpoint \texttt{GET /internal/auth/session} returns the authenticated user id, allowing ProfileService to verify the cookie without accessing the users database. Sessions are stored with Spring Session JDBC rather than only in application memory (Section~3).
 
-Registration also saves a profile-creation job in \texttt{pending\_profiles}, in the same transaction as the account. A background worker sends the username and initial favourite genres to ProfileService and retries failed deliveries. This lets users register even when ProfileService is temporarily unavailable. The job survives a restart, and repeated delivery does not overwrite an edited profile.
+Registration also saves a profile-creation job in \texttt{pending\_profiles}, in the same transaction as the account. A background worker sends the username and initial favourite genres to ProfileService and retries failed deliveries. This lets users register even when ProfileService is temporarily unavailable. The job survives a restart and repeated delivery does not overwrite an edited profile.
 
 The service has 97 automated tests in 12 classes:
 \begin{itemize}
@@ -81,7 +81,7 @@ The service has 97 automated tests in 12 classes:
 
 The ProfileService stores display names, biographies, favourite genres and favourite decades in its own PostgreSQL database. A profile uses the account id from UserService, without a foreign key across databases. Flyway migrations create and version the schema, while Hibernate validates it at startup.
 
-Authenticated users read and partially update their own profile through \texttt{GET/PATCH /api/profiles/me}. The owner is selected from the verified session, rather than an id supplied in the request body. Omitted fields keep their previous values, and invalid fields or preferences are rejected. Users can also browse profiles with pagination, search by username and view another user's public profile under \texttt{/api/profiles}.
+Authenticated users read and partially update their own profile through \texttt{GET/PATCH /api/profiles/me}. The owner is selected from the verified session, rather than an id supplied in the request body. Omitted fields keep their previous values and invalid fields or preferences are rejected. Users can also browse profiles with pagination, search by username and view another user's public profile under \texttt{/api/profiles}.
 
 ProfileService forwards the session cookie to UserService for each protected request. An invalid session returns 401, while an unavailable UserService returns 503. Initial profiles are created through \texttt{PUT /internal/profiles/\{userId\}}. This operation is idempotent: retries leave existing biography and preferences unchanged. A background worker retrieves missing usernames for older profiles through UserService's internal API.
 
@@ -151,7 +151,7 @@ Each service is packaged as a Docker image, built in two stages: Maven compiles 
 JAR is copied to a smaller Java runtime image. Locally, Docker Compose starts the whole system with one command: the five services, their
 four PostgreSQL databases, Ollama, Prometheus and Grafana.
 
-In Google Cloud, Terraform creates three virtual machines: one control plane and two workers, plus the persistent storage described in Section~3. The five application images are published to Google Artifact Registry. Ansible configures the machines, installs Kubernetes with kubeadm and Calico networking, and applies the manifests for the databases, Ollama and applications. The frontend is exposed on port \texttt{30510} of either worker; backend services and databases communicate through internal Kubernetes Services.
+In Google Cloud, Terraform creates three virtual machines: one control plane and two workers, plus the persistent storage described in Section~3. The five application images are published to Google Artifact Registry. Ansible configures the machines, installs Kubernetes with kubeadm and Calico networking and applies the manifests for the databases, Ollama and applications. The frontend is exposed on port \texttt{30510} of either worker; backend services and databases communicate through internal Kubernetes Services.
 
 The deployment tools run in a local Docker management container. After configuring Google credentials and the TMDB key, publishing the images and preparing the cluster, \texttt{just deploy} installs the databases before the applications and checks their readiness. Monitoring is deployed separately (Section~2.7). The complete setup and update instructions are in \texttt{infra/README.md}.
 
@@ -165,11 +165,7 @@ Prometheus collects the metrics every 15 seconds and Grafana displays them. Both
   \item \textbf{Cluster:} adapted from a community dashboard (\url{https://github.com/dotdc/grafana-dashboards-kubernetes}), with a section we added for the application: pods not ready, restarts per pod and free space on the database disk. It also shows CPU and memory per node and per namespace.
 \end{itemize}
 
-\begin{center}\red{PRINTS}\\[2pt]\emph{Fig. 2. Services dashboard in Grafana.}\end{center}
-
-In Kubernetes, the monitoring stack runs in its own namespace and is deployed with an Ansible playbook that follows the structure of the application's deployment playbook. Because pods change IP address whenever they are recreated, Prometheus discovers its targets through the Kubernetes API instead of using fixed addresses. It collects metrics from four sources (Fig.~3): the Spring services, node-exporter (one pod per VM, for CPU, memory and disks), cAdvisor (built into each node's kubelet, for each container) and kube-state-metrics (the state of Kubernetes objects, such as ready pods and restarts).
-
-\begin{center}\red{DIAGRAMA AQUI}\\[2pt]\emph{Fig. 3. Monitoring architecture in the Kubernetes cluster.}\end{center}
+In Kubernetes, the monitoring stack runs in its own namespace and is deployed with an Ansible playbook that follows the structure of the application's deployment playbook. Because pods change IP address whenever they are recreated, Prometheus discovers its targets through the Kubernetes API instead of using fixed addresses. It collects metrics from four sources: the Spring services, node-exporter (one pod per VM, for CPU, memory and disks), cAdvisor (built into each node's kubelet, for each container) and kube-state-metrics (the state of Kubernetes objects, such as ready pods and restarts).
 
 Security was considered throughout. Prometheus and kube-state-metrics have read-only permissions and kube-state-metrics can only read pods, nodes and namespaces. Prometheus has no login, so it is reachable only inside the cluster; external access goes through Grafana, which requires a password and blocks sign-up and anonymous access. The Grafana password is kept out of Git and passed to Kubernetes as a Secret, without being written anywhere outside \texttt{deployment.yml}.
 
@@ -194,7 +190,7 @@ The existing installation and saved data are reused, so recovery does not requir
 
 \subsection*{3.3 Validation and limitations}
 
-The cloud test confirmed that all three machines were switched off and later returned with the same identifiers. Existing accounts could log in again, and profiles, favourite genres and decades, watchlist contents and reviews were preserved. A comparison of the database records before and after shutdown also confirmed that the saved recommendations and their generation details were unchanged. This showed that previous results had been recovered, rather than generated again. A separate local test restarted UserService and PostgreSQL to verify that valid sessions could be recovered and that expired or replaced sessions were rejected.
+The cloud test confirmed that all three machines were switched off and later returned with the same identifiers. Existing accounts could log in again and profiles, favourite genres and decades, watchlist contents and reviews were preserved. A comparison of the database records before and after shutdown also confirmed that the saved recommendations and their generation details were unchanged. This showed that previous results had been recovered, rather than generated again. A separate local test restarted UserService and PostgreSQL to verify that valid sessions could be recovered and that expired or replaced sessions were rejected.
 
 The current design keeps recovery simple, but all four databases depend on worker-1 and its data disk. They cannot automatically move to another machine if that worker fails. Deleting the infrastructure with \texttt{terraform destroy} also deletes the data disk; recovering from disk loss would require a separate backup mechanism. The persistence guarantee covers the application data in PostgreSQL. Prometheus history, Grafana's internal data and downloaded Ollama models use temporary storage and are outside this guarantee; saved application recommendations remain in the database.
 
@@ -204,29 +200,33 @@ The current design keeps recovery simple, but all four databases depend on worke
 
 To test the system we wrote a load generator in Java (\texttt{scripts/LoadTest.java}). It sends HTTP requests to the public address of the Frontend to simulate real users.
 Before the test starts the program creates one account per client and logs in with it, so that each client has its own session. Then, it runs several stages with an increasing number of clients (1, 2, 8, 32, 128 and 512). Each client is a thread that sends one request, waits for the answer and immediately sends the next one (no time in between respose-request). The pages are picked at random to cover all the services: the catalogue and movie details (MovieService), the user's lists, the profiles (ProfileService) and the recommendations page (RecommendationService) - a client also asks the model for recommendations (with a small probability), limited to 3 of these requests per client and per stage, because each one can take tens of seconds.
-Each stage has tens of seconds of warm-up (which we don't measure), followed by 60 seconds of measurement and a 20-second pause (so that we can tell the stages apart in Grafana). For each stage we report the throughput (successful requests per second), the median (p50) and 95th percentile (p95) of the latency, and the percentage of failed requests (any answer other than HTTP 200, or a timeout). Requests that are still waiting when the stage ends are not counted.
+Each stage has tens of seconds of warm-up (which we don't measure), followed by 60 seconds of measurement and a 20-second pause (so that we can tell the stages apart in Grafana). For each stage we report the throughput (successful requests per second), the median (p50) and 95th percentile (p95) of the latency and the percentage of failed requests (any answer other than HTTP 200, or a timeout). Requests that are still waiting when the stage ends are not counted.
 We ran the test in both environment: in the cluster in Google Cloud and locally. During both runs we followed the system in the Grafana dashboard.
 
 \subsection*{4.2 Results}
 
+\setcounter{figure}{1}
 \begin{figure}[h]
 \centering
 \begin{minipage}{0.49\linewidth}
 \centering
-\includegraphics[width=\linewidth]{loadtest-cloud.png}\\
+\includegraphics[width=\linewidth]{report/evaluation/loadtest-cloud.png}\\
 \small (a) Cloud
 \end{minipage}\hfill
 \begin{minipage}{0.49\linewidth}
 \centering
-\includegraphics[width=\linewidth]{loadtest-local.png}\\
+\includegraphics[width=\linewidth]{report/evaluation/loadtest-local.png}\\
 \small (b) Local
 \end{minipage}
 \caption{Output of the load test: throughput (\emph{pedidos/s}), p50 and p95 latency and error rate for each number of clients.}
 \label{fig:loadtest}
 \end{figure}
 
-\paragraph{Latency.} With few clients the latency in the cloud is about 130~ms, while locally it is about 16~ms (Figure~\ref{fig:loadtest}). Most of this difference is the round trip over the Internet between the laptop and the cluster (in previous tests we observed that the Internet speed has a large impact on the results). Because each client waits for the answer before sending the next request, this also limits the throughput of a single client in the cloud to a few requests per second. Up to 32 clients the median latency stays almost constant in both setups, so the system is not yet under pressure. From 128 clients on, the latency in the cloud grows quickly (p50 of about 1~s and p95 of 3.3~s), and with 512 clients the median goes above 8~s.
+\paragraph{Latency.} With few clients the latency in the cloud is about 130~ms, while locally it is about 16~ms (Figure~\ref{fig:loadtest}). Most of this difference is the round trip over the Internet between the laptop and the cluster (in previous tests we observed that the Internet speed has a large impact on the results). Because each client waits for the answer before sending the next request, this also limits the throughput of a single client in the cloud to a few requests per second. Up to 32 clients the median latency stays almost constant in both setups, so the system is not yet under pressure. From 128 clients on, the latency in the cloud grows quickly (p50 of about 1~s and p95 of 3.3~s) and with 512 clients the median goes above 8~s.
 
 \paragraph{Throughput and saturation.} In the cloud, the throughput grows until 128 clients (47.2 req/s) and then drops with 512 clients (35.4 req/s), while 27.4\% of the requests fail (most of them because they reach the timeout). This means that the system saturated somewhere between 128 and 512 clients (adding more clients was only making the queues longer). Locally, the error rate with 512 clients was lower (7.39\%), as expected.
 
+\section*{5 Conclusion}
+
+Movie Rec Hub runs locally with Docker Compose and in Google Cloud on a Kubernetes cluster built with Terraform and Ansible and it keeps its data across a full shutdown of the infrastructure. The load test showed no signs of pressure up to 32 clients and saturation between 128 and 512 clients in the cloud. Generating a recommendation with the language model on CPU is slow, so the ``For you'' list is prepared in the background and the page loads from the database. The small model also limits the quality of the answers, for example with decades. Future work includes a GPU or a larger model, filtering the catalogue before building the prompt, replicated databases with backups and persistent storage for Ollama and Grafana.
 \end{document}
